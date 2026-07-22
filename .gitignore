@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+
+# Node
+node_modules/
+dist/
+
+# Secrets
+.env
+
+# Logs
+*.log
+
+# Editor/OS noise
+.vscode/
+.DS_Store
+Thumbs.db

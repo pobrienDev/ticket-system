@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["client", "alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest must set env vars before importing app modules
+"tests/conftest.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:passlib.*",
+    "ignore::DeprecationWarning:jose.*",
+]
