@@ -18,4 +18,6 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::DeprecationWarning:passlib.*",
     "ignore::DeprecationWarning:jose.*",
+    # FastAPI's own testclient import path; nothing we can change on our side
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
