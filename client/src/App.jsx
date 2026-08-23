@@ -43,7 +43,11 @@ function App() {
   }, [handleLogout])
 
   if (checking) {
-    return <p className="empty">Loading…</p>
+    return (
+      <p className="empty" role="status">
+        Loading…
+      </p>
+    )
   }
   if (bootError) {
     return (

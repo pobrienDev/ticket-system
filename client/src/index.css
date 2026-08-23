@@ -1,17 +1,108 @@
+/* Design tokens. Light is the default; dark overrides come from the OS
+   preference (when no explicit choice is stored) or from data-theme, which
+   the ThemeToggle sets and persists. */
 :root {
-  --bg: #f4f6fb;
+  --bg: #f2f4fa;
+  --bg-glow: radial-gradient(1100px 520px at 85% -10%, rgba(79, 109, 245, 0.14) 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(107, 47, 179, 0.07) 0%, transparent 55%);
   --surface: #ffffff;
   --border: #dde3ef;
+  --input-bg: #ffffff;
   --text: #1c2333;
   --text-muted: #5b6478;
-  --accent: #4f6df5;
-  --accent-dark: #3b55d9;
-  --danger: #d64550;
 
+  --accent: #4f6df5;
+  --accent-strong: #3b55d9; /* hover fills and link text */
+  --accent-soft: #e8edfd;
+  --accent-glow: rgba(79, 109, 245, 0.28);
+
+  --danger: #d64550;
+  --danger-soft: #fbe5e7;
+  --danger-text: #8f2d35;
+  --warn: #b25e09;
+  --warn-soft: #fdf1e2;
+  --success: #1e7e34;
+  --success-soft: #e6f4ea;
+  --purple: #6b2fb3;
+  --purple-soft: #f3e8fd;
+  --neutral-soft: #eef0f5;
+
+  --shadow-card: 0 1px 2px rgba(28, 35, 51, 0.05), 0 10px 30px -18px rgba(28, 35, 51, 0.25);
+  --shadow-raised: 0 2px 4px rgba(28, 35, 51, 0.06), 0 18px 40px -18px rgba(28, 35, 51, 0.35);
+
+  color-scheme: light;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   color: var(--text);
   background-color: var(--bg);
+}
+
+/* Dark palette, twice: once for OS preference (unless light is forced),
+   once for the explicit toggle. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1320;
+    --bg-glow: radial-gradient(1100px 520px at 85% -10%, rgba(109, 135, 255, 0.12) 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(196, 154, 240, 0.06) 0%, transparent 55%);
+    --surface: #161d2e;
+    --border: #293350;
+    --input-bg: #10182a;
+    --text: #e6eaf3;
+    --text-muted: #97a2bb;
+
+    --accent: #6d87ff;
+    --accent-strong: #93a7ff;
+    --accent-soft: #222d52;
+    --accent-glow: rgba(109, 135, 255, 0.3);
+
+    --danger: #ef6a74;
+    --danger-soft: #3b1e26;
+    --danger-text: #ffb0b7;
+    --warn: #f0b35c;
+    --warn-soft: #382a13;
+    --success: #5ec97b;
+    --success-soft: #16301f;
+    --purple: #c49af0;
+    --purple-soft: #2d2142;
+    --neutral-soft: #222a3d;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px -18px rgba(0, 0, 0, 0.6);
+    --shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.4), 0 20px 44px -18px rgba(0, 0, 0, 0.7);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1320;
+  --bg-glow: radial-gradient(1100px 520px at 85% -10%, rgba(109, 135, 255, 0.12) 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(196, 154, 240, 0.06) 0%, transparent 55%);
+  --surface: #161d2e;
+  --border: #293350;
+  --input-bg: #10182a;
+  --text: #e6eaf3;
+  --text-muted: #97a2bb;
+
+  --accent: #6d87ff;
+  --accent-strong: #93a7ff;
+  --accent-soft: #222d52;
+  --accent-glow: rgba(109, 135, 255, 0.3);
+
+  --danger: #ef6a74;
+  --danger-soft: #3b1e26;
+  --danger-text: #ffb0b7;
+  --warn: #f0b35c;
+  --warn-soft: #382a13;
+  --success: #5ec97b;
+  --success-soft: #16301f;
+  --purple: #c49af0;
+  --purple-soft: #2d2142;
+  --neutral-soft: #222a3d;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px -18px rgba(0, 0, 0, 0.6);
+  --shadow-raised: 0 2px 4px rgba(0, 0, 0, 0.4), 0 20px 44px -18px rgba(0, 0, 0, 0.7);
+
+  color-scheme: dark;
 }
 
 *,
@@ -23,6 +114,8 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg-glow), var(--bg);
+  transition: background-color 0.25s ease;
 }
 
 h1,
@@ -30,6 +123,11 @@ h2,
 h3,
 p {
   margin: 0;
+}
+
+h1,
+h2 {
+  letter-spacing: -0.02em;
 }
 
 input,

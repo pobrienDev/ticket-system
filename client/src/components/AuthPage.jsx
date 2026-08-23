@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { api, setToken } from '../api'
+import Logo from './Logo'
+import ThemeToggle from './ThemeToggle'
 
 function AuthPage({ onAuthed }) {
   const [mode, setMode] = useState('login')
@@ -29,7 +31,11 @@ function AuthPage({ onAuthed }) {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Ticket System</h1>
+        <ThemeToggle />
+        <div className="auth-card__brand">
+          <Logo />
+          <h1>Ticket System</h1>
+        </div>
         <p className="auth-card__subtitle">
           {mode === 'login' ? 'Sign in to your account' : 'Create an account'}
         </p>

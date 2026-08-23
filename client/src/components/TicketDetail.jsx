@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { PRIORITIES, STATUSES, priorityLabel } from '../constants'
+import { PRIORITIES, TRANSITIONS, isOverdue, priorityLabel, statusLabel } from '../constants'
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
+function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, onDeleted }) {
   const [ticket, setTicket] = useState(null)
   const [auditLog, setAuditLog] = useState(null)
   const [comment, setComment] = useState('')
+  const [commenting, setCommenting] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState(null) // null = not editing
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
@@ -24,25 +27,44 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
 
   async function applyPatch(patch) {
     setError(null)
+    setSaving(true)
     try {
-      await api.updateTicket(ticketId, patch)
-      await load()
+      const updated = await api.updateTicket(ticketId, patch)
+      // The PATCH response is the fresh ticket; keep the loaded comments.
+      setTicket((prev) => ({ ...updated, comments: prev?.comments ?? [] }))
       if (auditLog !== null) setAuditLog(await api.getAuditLog(ticketId))
       onChanged()
+      return true
     } catch (err) {
       setError(err.message)
+      return false
+    } finally {
+      setSaving(false)
     }
+  }
+
+  async function handleSaveEdit(event) {
+    event.preventDefault()
+    const ok = await applyPatch({
+      title: editForm.title,
+      description: editForm.description,
+      category_id: editForm.category_id === '' ? null : Number(editForm.category_id),
+    })
+    if (ok) setEditForm(null)
   }
 
   async function handleAddComment(event) {
     event.preventDefault()
     setError(null)
+    setCommenting(true)
     try {
       await api.addComment(ticketId, comment)
       setComment('')
       await load()
     } catch (err) {
       setError(err.message)
+    } finally {
+      setCommenting(false)
     }
   }
 
@@ -74,12 +96,16 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
         <button className="btn--link" type="button" onClick={onBack}>
           ← Back to tickets
         </button>
-        <p className="empty">{error ?? 'Loading ticket…'}</p>
+        <p className="empty" role="status">
+          {error ?? 'Loading ticket…'}
+        </p>
       </div>
     )
   }
 
-  const canEdit = user.is_admin || ticket.owner.id === user.id
+  const canEdit = user.is_admin || ticket.owner.id === user.id || ticket.assignee?.id === user.id
+  const statusOptions = [ticket.status, ...TRANSITIONS[ticket.status]]
+  const overdue = isOverdue(ticket)
 
   return (
     <div className="detail">
@@ -88,32 +114,86 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
       </button>
 
       <div className="detail__card">
-        <div className="ticket-card__title-row">
-          <span className={`badge badge--p${ticket.priority}`}>{priorityLabel(ticket.priority)}</span>
-          {ticket.category && <span className="badge badge--category">{ticket.category.name}</span>}
-          <h2>
-            #{ticket.id} {ticket.title}
-          </h2>
-        </div>
+        {editForm ? (
+          <form className="detail__edit" onSubmit={handleSaveEdit}>
+            <label className="field field--grow">
+              <span>Title</span>
+              <input
+                type="text"
+                value={editForm.title}
+                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                maxLength={200}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Description</span>
+              <textarea
+                rows={4}
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Category</span>
+              <select
+                value={editForm.category_id}
+                onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
+              >
+                <option value="">No category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="detail__edit-buttons">
+              <button className="btn btn--primary" type="submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+              <button className="btn--link" type="button" onClick={() => setEditForm(null)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <div className="ticket-card__title-row">
+              <span className={`badge badge--p${ticket.priority}`}>{priorityLabel(ticket.priority)}</span>
+              <span className={`badge badge--status badge--status-${ticket.status}`}>
+                {statusLabel(ticket.status)}
+              </span>
+              {overdue && <span className="badge badge--overdue">Overdue</span>}
+              {ticket.category && <span className="badge badge--category">{ticket.category.name}</span>}
+              <h2>
+                #{ticket.id} {ticket.title}
+              </h2>
+            </div>
 
-        {ticket.description && <p className="detail__description">{ticket.description}</p>}
-        <p className="ticket-card__meta">
-          Opened by {ticket.owner.email} on {dateFormat.format(new Date(ticket.created_at))} ·{' '}
-          {ticket.assignee ? `assigned to ${ticket.assignee.email}` : 'unassigned'}
-        </p>
+            {ticket.description && <p className="detail__description">{ticket.description}</p>}
+            <p className="ticket-card__meta">
+              Opened by {ticket.owner.email} on {dateFormat.format(new Date(ticket.created_at))} ·{' '}
+              {ticket.assignee ? `assigned to ${ticket.assignee.email}` : 'unassigned'}
+              {ticket.due_date && ` · due ${dateFormat.format(new Date(ticket.due_date))}`}
+              {ticket.resolved_at && ` · resolved ${dateFormat.format(new Date(ticket.resolved_at))}`}
+            </p>
+          </>
+        )}
 
         <div className="detail__controls">
-          {canEdit && (
+          {canEdit && !editForm && (
             <>
               <label className="field">
                 <span>Status</span>
                 <select
                   value={ticket.status}
+                  disabled={saving}
                   onChange={(e) => applyPatch({ status: e.target.value })}
                 >
-                  {STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  {statusOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {statusLabel(value)}
                     </option>
                   ))}
                 </select>
@@ -122,6 +202,7 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
                 <span>Priority</span>
                 <select
                   value={ticket.priority}
+                  disabled={saving}
                   onChange={(e) => applyPatch({ priority: Number(e.target.value) })}
                 >
                   {PRIORITIES.map((p) => (
@@ -134,11 +215,12 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
             </>
           )}
 
-          {user.is_admin && (
+          {user.is_admin && !editForm && (
             <label className="field">
               <span>Assignee</span>
               <select
                 value={ticket.assignee?.id ?? ''}
+                disabled={saving}
                 onChange={(e) =>
                   applyPatch({ assignee_id: e.target.value === '' ? null : Number(e.target.value) })
                 }
@@ -154,6 +236,21 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
           )}
 
           <div className="detail__control-buttons">
+            {canEdit && !editForm && (
+              <button
+                className="btn--link"
+                type="button"
+                onClick={() =>
+                  setEditForm({
+                    title: ticket.title,
+                    description: ticket.description,
+                    category_id: ticket.category?.id ?? '',
+                  })
+                }
+              >
+                Edit details
+              </button>
+            )}
             <button className="btn--link" type="button" onClick={toggleAudit}>
               {auditLog === null ? 'Show history' : 'Hide history'}
             </button>
@@ -175,7 +272,7 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
           <div className="audit">
             <h3>History</h3>
             {auditLog.length === 0 ? (
-              <p className="empty">No status or assignment changes yet.</p>
+              <p className="empty">No changes yet.</p>
             ) : (
               <ul className="audit__list">
                 {auditLog.map((entry) => (
@@ -221,11 +318,12 @@ function TicketDetail({ ticketId, user, users, onBack, onChanged, onDeleted }) {
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="What did you try? What changed?"
+              maxLength={5000}
               required
             />
           </label>
-          <button className="btn btn--primary" type="submit">
-            Comment
+          <button className="btn btn--primary" type="submit" disabled={commenting}>
+            {commenting ? 'Posting…' : 'Comment'}
           </button>
         </form>
       </div>

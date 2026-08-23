@@ -1,4 +1,4 @@
-import { priorityLabel, statusLabel } from '../constants'
+import { isOverdue, priorityLabel, statusLabel } from '../constants'
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -8,7 +8,10 @@ function TicketCard({ ticket, onSelect }) {
       <button className="ticket-card__button" type="button" onClick={() => onSelect(ticket.id)}>
         <div className="ticket-card__title-row">
           <span className={`badge badge--p${ticket.priority}`}>{priorityLabel(ticket.priority)}</span>
-          <span className="badge badge--status">{statusLabel(ticket.status)}</span>
+          <span className={`badge badge--status badge--status-${ticket.status}`}>
+            {statusLabel(ticket.status)}
+          </span>
+          {isOverdue(ticket) && <span className="badge badge--overdue">Overdue</span>}
           {ticket.category && <span className="badge badge--category">{ticket.category.name}</span>}
           <h3>
             #{ticket.id} {ticket.title}

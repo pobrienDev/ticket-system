@@ -43,6 +43,7 @@ function TicketForm({ categories, onCreate }) {
             value={form.title}
             onChange={(e) => setField('title', e.target.value)}
             placeholder="Short summary of the issue"
+            maxLength={200}
             required
           />
         </label>

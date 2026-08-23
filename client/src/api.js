@@ -1,5 +1,10 @@
 const TOKEN_KEY = 'ticket_token'
 
+// Same-origin by default (the Vite dev proxy forwards to the API). For a
+// separately-hosted frontend, set VITE_API_URL to the backend's origin at
+// build time and add that frontend origin to the backend's CORS_ORIGINS.
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -50,7 +55,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
     payload = JSON.stringify(body)
   }
 
-  const res = await fetch(path, { method, headers, body: payload })
+  const res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload })
   if (res.status === 401 && !path.startsWith('/auth/') && unauthorizedHandler) {
     unauthorizedHandler()
   }
@@ -77,6 +82,7 @@ export const api = {
     const query = params.toString()
     return request(`/tickets${query ? `?${query}` : ''}`)
   },
+  getStats: () => request('/tickets/stats'),
   getTicket: (id) => request(`/tickets/${id}`),
   createTicket: (input) => request('/tickets', { method: 'POST', body: input }),
   updateTicket: (id, patch) => request(`/tickets/${id}`, { method: 'PATCH', body: patch }),
