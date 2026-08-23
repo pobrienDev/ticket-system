@@ -248,8 +248,10 @@ def update_ticket(
         record_change(db, ticket, current_user, "status", ticket.status.value, new_status.value)
         if new_status == models.TicketStatus.resolved:
             ticket.resolved_at = utcnow()
-        elif ticket.status in (models.TicketStatus.resolved, models.TicketStatus.closed):
-            ticket.resolved_at = None  # reopened
+        elif new_status in UNRESOLVED_STATUSES:
+            # Reopened: the ticket is back in the queue, so it no longer has a
+            # resolution time. Moving resolved -> closed keeps resolved_at.
+            ticket.resolved_at = None
 
     # Audit the remaining editable fields too — history should not be
     # limited to status and assignment.

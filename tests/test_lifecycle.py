@@ -50,6 +50,19 @@ def test_resolved_at_stamped_and_cleared_on_reopen(authed_client):
     assert reopened["resolved_at"] is None
 
 
+def test_closing_a_resolved_ticket_keeps_resolved_at(authed_client):
+    # resolved -> closed is completion, not a reopen: the resolution
+    # timestamp must survive (stats' avg resolution depends on it).
+    made = create_ticket(authed_client)
+    resolved = set_status(authed_client, made["id"], "resolved").json()
+    closed = set_status(authed_client, made["id"], "closed").json()
+    assert closed["resolved_at"] == resolved["resolved_at"]
+
+    # And the closed ticket still counts toward average resolution time.
+    stats = authed_client.get("/tickets/stats").json()
+    assert stats["avg_resolution_hours"] is not None
+
+
 def test_due_date_follows_priority_sla(authed_client):
     import datetime
 
