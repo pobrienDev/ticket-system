@@ -4,7 +4,7 @@ import os
 # falsy value rather than popped: app imports call load_dotenv(), which fills
 # in missing keys from .env — a present-but-empty value can't be overridden,
 # so tests can never make real email calls even if .env has a key.
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-padded-to-32B")
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["SENDGRID_API_KEY"] = ""
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")

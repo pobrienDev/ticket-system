@@ -16,13 +16,39 @@ def test_register_duplicate_email_rejected(client, test_user):
     response = client.post(
         "/auth/register", json={"email": test_user.email, "password": "longenough123"}
     )
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert "already registered" in response.json()["detail"]
 
 
 def test_register_short_password_rejected(client):
     response = client.post("/auth/register", json={"email": "new@example.com", "password": "short"})
     assert response.status_code == 422
+
+
+def test_register_overlong_password_rejected(client):
+    # bcrypt truncates at 72 bytes; longer passwords must be rejected, not silently clipped.
+    response = client.post("/auth/register", json={"email": "new@example.com", "password": "x" * 73})
+    assert response.status_code == 422
+
+
+def test_email_is_case_insensitive(client):
+    response = client.post(
+        "/auth/register", json={"email": "Mixed.Case@Example.com", "password": "longenough123"}
+    )
+    assert response.status_code == 201
+    assert response.json()["email"] == "mixed.case@example.com"
+
+    # Same email in different case is the same account...
+    response = client.post(
+        "/auth/register", json={"email": "MIXED.CASE@example.com", "password": "longenough123"}
+    )
+    assert response.status_code == 409
+
+    # ...and login works regardless of the case typed.
+    response = client.post(
+        "/auth/login", data={"username": "mixed.CASE@EXAMPLE.com", "password": "longenough123"}
+    )
+    assert response.status_code == 200
 
 
 def test_login_success(client, test_user):

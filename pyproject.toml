@@ -12,12 +12,20 @@ known-first-party = ["app", "tests"]
 [tool.ruff.lint.per-file-ignores]
 # conftest must set env vars before importing app modules
 "tests/conftest.py" = ["E402"]
+# demo fixture rows read better as one line per ticket
+"app/seed.py" = ["E501"]
+
+[tool.coverage.run]
+# The seed script is a CLI fixture, not app logic under test.
+omit = ["app/seed.py"]
+
+[tool.coverage.report]
+# Keep the suite honest: coverage below this fails `pytest --cov=app`.
+fail_under = 85
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = [
-    "ignore::DeprecationWarning:passlib.*",
-    "ignore::DeprecationWarning:jose.*",
     # FastAPI's own testclient import path; nothing we can change on our side
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]

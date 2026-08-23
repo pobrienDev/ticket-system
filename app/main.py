@@ -1,12 +1,23 @@
+import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from .dependencies import get_db
 from .rate_limit import limiter
 from .routers import categories, comments, tickets, users
+
+# Root logging config so app loggers (e.g. the console email backend in
+# notifications.py) actually print; uvicorn only configures its own loggers.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(
     title="Ticket Management System",
@@ -37,5 +48,11 @@ app.include_router(categories.router)
 
 
 @app.get("/health", tags=["health"])
-def health():
+def health(db: Session = Depends(get_db)):
+    # Touch the database so a deploy health check fails when the DB is down,
+    # not just when the process is up.
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as exc:  # pragma: no cover - only reachable with a dead DB
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
     return {"status": "ok"}

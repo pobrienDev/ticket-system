@@ -11,3 +11,7 @@ limiter = Limiter(
 )
 
 LOGIN_RATE_LIMIT = os.environ.get("LOGIN_RATE_LIMIT", "10/minute")
+
+# Registration is throttled harder: each attempt costs a bcrypt hash, and an
+# open endpoint that mints accounts is the easiest thing to script against.
+REGISTER_RATE_LIMIT = os.environ.get("REGISTER_RATE_LIMIT", "5/minute")

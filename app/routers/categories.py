@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -21,11 +22,16 @@ def create_category(
     db: Session = Depends(get_db),
     _admin: models.User = Depends(get_current_admin),
 ):
-    existing = db.query(models.Category).filter(models.Category.name == category.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Category already exists")
+    duplicate = HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category already exists")
+    if db.query(models.Category).filter(models.Category.name == category.name).first():
+        raise duplicate
     new_category = models.Category(name=category.name)
     db.add(new_category)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent create slipped past the check; the unique constraint wins.
+        db.rollback()
+        raise duplicate from None
     db.refresh(new_category)
     return new_category

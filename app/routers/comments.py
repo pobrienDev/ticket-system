@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..dependencies import get_current_user, get_db
+from .tickets import get_visible_ticket_or_404
 
 router = APIRouter(prefix="/tickets/{ticket_id}/comments", tags=["comments"])
 
@@ -14,9 +15,8 @@ def create_comment(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    ticket = db.query(models.Ticket).filter(models.Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+    # Same visibility rule as reading: you can only comment on tickets you can see.
+    ticket = get_visible_ticket_or_404(ticket_id, db, current_user)
     new_comment = models.Comment(
         ticket_id=ticket.id,
         body=comment.body,

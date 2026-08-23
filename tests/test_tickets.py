@@ -13,8 +13,10 @@ def test_create_ticket_owner_comes_from_token(authed_client, test_user, other_us
     # A client trying to claim someone else's ownership must be ignored.
     body = create_ticket(authed_client, owner_id=other_user.id)
     assert body["owner"]["id"] == test_user.id
-    assert body["status"] == "open"
+    assert body["status"] == "new"
     assert body["priority"] == 3
+    assert body["due_date"] is not None  # SLA target stamped on create
+    assert body["resolved_at"] is None
 
 
 def test_create_ticket_requires_auth(client):
@@ -28,15 +30,15 @@ def test_create_ticket_unknown_category_rejected(authed_client):
 
 
 def test_list_tickets_filters_by_status(authed_client):
-    create_ticket(authed_client, title="Open one")
+    create_ticket(authed_client, title="Still new")
     made = create_ticket(authed_client, title="Resolved one")
     authed_client.patch(f"/tickets/{made['id']}", json={"status": "resolved"})
 
-    response = authed_client.get("/tickets", params={"status": "open"})
+    response = authed_client.get("/tickets", params={"status": "new"})
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 1
-    assert body["items"][0]["title"] == "Open one"
+    assert body["items"][0]["title"] == "Still new"
 
 
 def test_list_tickets_pagination(authed_client):
@@ -120,8 +122,9 @@ def test_timestamps_are_timezone_aware(authed_client):
 
 def test_patch_by_non_owner_denied(authed_client, admin_client, other_user, client):
     made = create_ticket(admin_client, title="Admin's ticket")
+    # A ticket the user can't see 404s (not 403) so IDs can't be probed.
     response = authed_client.patch(f"/tickets/{made['id']}", json={"priority": 1})
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_patch_by_admin_on_any_ticket_allowed(authed_client, admin_client):
@@ -162,7 +165,7 @@ def test_status_change_creates_audit_entry(authed_client, db):
     entries = db.query(models.AuditLogEntry).filter_by(ticket_id=made["id"]).all()
     assert len(entries) == 1
     assert entries[0].field == "status"
-    assert entries[0].old_value == "open"
+    assert entries[0].old_value == "new"
     assert entries[0].new_value == "in_progress"
 
 

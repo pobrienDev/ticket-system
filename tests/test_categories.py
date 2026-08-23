@@ -21,4 +21,4 @@ def test_create_category_as_admin(admin_client):
 
 def test_create_duplicate_category_rejected(admin_client, category):
     response = admin_client.post("/categories", json={"name": category.name})
-    assert response.status_code == 400
+    assert response.status_code == 409

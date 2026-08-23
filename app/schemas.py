@@ -14,7 +14,9 @@ class ORMModel(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    # bcrypt only hashes the first 72 bytes; cap the length so two long
+    # passwords sharing a prefix can't silently verify as equal.
+    password: str = Field(min_length=8, max_length=72)
 
 
 class UserResponse(ORMModel):
@@ -32,7 +34,7 @@ class Token(BaseModel):
 
 
 class CategoryCreate(BaseModel):
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=100)
 
 
 class CategoryResponse(ORMModel):
@@ -44,7 +46,7 @@ class CategoryResponse(ORMModel):
 
 
 class CommentCreate(BaseModel):
-    body: str = Field(min_length=1)
+    body: str = Field(min_length=1, max_length=5000)
 
 
 class CommentResponse(ORMModel):
@@ -58,15 +60,15 @@ class CommentResponse(ORMModel):
 
 
 class TicketCreate(BaseModel):
-    title: str = Field(min_length=1)
-    description: str = ""
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=10_000)
     category_id: int | None = None
     priority: int = Field(default=3, ge=1, le=5)  # 1 = highest
 
 
 class TicketUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1)
-    description: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10_000)
     status: TicketStatus | None = None
     priority: int | None = Field(default=None, ge=1, le=5)
     category_id: int | None = None
@@ -92,6 +94,8 @@ class TicketResponse(ORMModel):
     owner: UserResponse
     assignee: UserResponse | None
     category: CategoryResponse | None
+    due_date: datetime.datetime | None
+    resolved_at: datetime.datetime | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -105,6 +109,16 @@ class TicketListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class TicketStatsResponse(BaseModel):
+    total: int
+    by_status: dict[str, int]  # every status present, 0 when none
+    unresolved: int  # new + open + in_progress
+    p1_unresolved: int
+    unassigned_unresolved: int
+    overdue: int  # past due_date and not resolved/closed
+    avg_resolution_hours: float | None  # None until something has been resolved
 
 
 # --- Audit log ---

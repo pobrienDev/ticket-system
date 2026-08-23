@@ -34,10 +34,27 @@ class UTCDateTime(TypeDecorator):
 
 
 class TicketStatus(str, enum.Enum):
+    new = "new"  # just created, not yet triaged
     open = "open"
     in_progress = "in_progress"
     resolved = "resolved"
     closed = "closed"
+
+
+# Legal status transitions. A ticket starts as `new`; resolved/closed tickets
+# must be reopened (back to `open`) before they can move anywhere else.
+ALLOWED_TRANSITIONS = {
+    TicketStatus.new: {
+        TicketStatus.open, TicketStatus.in_progress, TicketStatus.resolved, TicketStatus.closed
+    },
+    TicketStatus.open: {TicketStatus.in_progress, TicketStatus.resolved, TicketStatus.closed},
+    TicketStatus.in_progress: {TicketStatus.open, TicketStatus.resolved, TicketStatus.closed},
+    TicketStatus.resolved: {TicketStatus.open, TicketStatus.closed},
+    TicketStatus.closed: {TicketStatus.open},
+}
+
+# Response-time targets by priority (1 = highest), used to stamp due_date on create.
+SLA_HOURS = {1: 4, 2: 24, 3: 72, 4: 168, 5: 336}
 
 
 class User(Base):
@@ -64,11 +81,13 @@ class Ticket(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     description = Column(String, default="", server_default="", nullable=False)
-    status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False, index=True)
+    status = Column(Enum(TicketStatus), default=TicketStatus.new, nullable=False, index=True)
     priority = Column(Integer, default=3, nullable=False)  # 1 = highest
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
+    due_date = Column(UTCDateTime, nullable=True)  # SLA target, derived from priority on create
+    resolved_at = Column(UTCDateTime, nullable=True)  # stamped on entering resolved, cleared on reopen
     created_at = Column(UTCDateTime, default=utcnow, nullable=False)
     updated_at = Column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

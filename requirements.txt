@@ -4,9 +4,8 @@ sqlalchemy>=2.0
 alembic
 pydantic[email]>=2.0
 python-dotenv
-passlib
-bcrypt==4.0.1
-python-jose[cryptography]
+bcrypt>=4.1
+PyJWT>=2.8
 python-multipart
 httpx
 slowapi

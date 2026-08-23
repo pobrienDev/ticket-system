@@ -1,13 +1,11 @@
 import datetime
 import os
 
+import bcrypt
+import jwt
 from dotenv import load_dotenv
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 load_dotenv()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.environ.get("JWT_SECRET")  # from .env, never hardcoded
 if not SECRET_KEY:
@@ -20,11 +18,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except ValueError:  # malformed stored hash
+        return False
 
 
 def create_access_token(data: dict, expires_minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
@@ -36,6 +37,8 @@ def create_access_token(data: dict, expires_minutes: int = ACCESS_TOKEN_EXPIRE_M
 
 def decode_access_token(token: str) -> dict | None:
     try:
+        # Pinning algorithms here prevents algorithm-confusion attacks; PyJWT
+        # also verifies the exp claim as part of decode.
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except jwt.InvalidTokenError:
         return None
