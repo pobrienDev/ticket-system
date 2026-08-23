@@ -2,7 +2,17 @@
 
 A full-stack helpdesk ticket tracker: **FastAPI + PostgreSQL** backend, **React + Vite** frontend, JWT authentication with role-based access control, audit logging, email notifications, and CI/CD via GitHub Actions.
 
-Built from real helpdesk domain experience: status transitions, assignment, priority triage, comments, and an audit trail — the things a real ticket system actually needs.
+Built from real helpdesk domain experience: an enforced status lifecycle, assignment, priority triage with SLA due dates, comments, and a full audit trail — the things a real ticket system actually needs.
+
+## Demo
+
+![Demo: signing in, filtering the queue, working a ticket, and reviewing its audit history](docs/demo.gif)
+
+| Light | Dark |
+| --- | --- |
+| ![Dashboard in light mode: stats row, new-ticket form, filters, and the ticket queue](docs/dashboard-light.png) | ![Ticket queue in dark mode with status, priority, and overdue badges](docs/dashboard-dark.png) |
+
+<img src="docs/ticket-detail.png" alt="Ticket detail with SLA due date, status/priority/assignee controls, audit history, and comments" width="720">
 
 ## Architecture
 
@@ -11,22 +21,32 @@ React (Vite) ──/auth /tickets /users /categories──▶ FastAPI ──▶ 
                                                       │
                                                       └──▶ SendGrid (assignment emails,
                                                            failures logged, never fatal)
-GitHub Actions: pytest + ruff + client build on every push; deploy hook on merge to main
+GitHub Actions: ruff + migration check + pytest + oxlint + vitest + client build on every
+push; deploy hook on merge to main
 ```
 
 | Layer | Component | Purpose |
 | --- | --- | --- |
-| Backend | Auth (JWT) | Registration, login, bcrypt hashing, role checks, login rate limiting |
-| Backend | Ticket logic | CRUD, filtering, pagination, search, priority sort |
-| Backend | Audit logging | Records every status and assignment change |
+| Backend | Auth (JWT) | Registration, login, bcrypt hashing, role checks, login/register rate limiting |
+| Backend | Ticket logic | CRUD with an enforced status lifecycle, visibility scoping, filtering, pagination, search, sorting, SLA due dates, queue stats |
+| Backend | Audit logging | Records every ticket change (status, assignment, priority, title, description, category) |
 | Data | SQLAlchemy + Alembic | Users, Tickets, Comments, Categories, AuditLogEntries |
 | Integration | Email API | Notifies the assignee when a ticket is assigned |
-| Frontend | React UI | Login/register, ticket list + filters, detail view with comments |
-| CI/CD | GitHub Actions | Tests + lint on push, automated deploy on merge to `main` |
+| Frontend | React UI | Login/register, stats dashboard, queue views, ticket detail with editing/comments/history, dark mode |
+| CI/CD | GitHub Actions | Backend + frontend tests, lint, and migration verification on push; automated deploy on merge to `main` |
 
 ## Quick start
 
-Requires Python 3.12+ and Node 20+.
+**With Docker** (Postgres 16 + API + client, the prod-shaped stack):
+
+```bash
+docker compose up --build
+docker compose exec api python -m app.seed --demo   # first run: demo data
+```
+
+UI at http://localhost:5173, API at http://localhost:8000. Compose seeds an admin login (`admin@example.com` / `admin123` — change it in `docker-compose.yml`).
+
+**Or manually** — requires Python 3.12+ and Node 20+.
 
 **Backend:**
 
@@ -37,6 +57,7 @@ pip install -r requirements.txt
 copy .env.example .env        # then set JWT_SECRET (see comment in the file)
 alembic upgrade head
 python -m app.seed            # seeds categories; admin user if ADMIN_EMAIL/ADMIN_PASSWORD set
+python -m app.seed --demo     # optional: realistic demo users, tickets, comments, audit history
 uvicorn app.main:app --reload
 ```
 
@@ -50,44 +71,55 @@ npm install
 npm run dev
 ```
 
-UI at http://localhost:5173. The Vite dev server proxies API routes to :8000, so there's no CORS setup in development.
+UI at http://localhost:5173. The Vite dev server proxies API routes to :8000, so there's no CORS setup in development. For a separately-hosted frontend, set `VITE_API_URL` to the backend origin at build time.
+
+Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.torres@example.com` (admins), requesters `priya.patel@example.com` / `dan.kowalski@example.com` / `emma.wright@example.com` — all with password `demo1234` (override with `DEMO_PASSWORD`).
 
 ## Data model
 
 - **User** — email, bcrypt-hashed password, `is_admin` flag
-- **Ticket** — belongs to an owner (User) and optionally an assignee (User) — two FKs to the same table, so relationships declare `foreign_keys=[...]` explicitly; status enum (`open → in_progress → resolved → closed`), integer priority (1 = highest), optional Category
+- **Ticket** — belongs to an owner (User) and optionally an assignee (User) — two FKs to the same table, so relationships declare `foreign_keys=[...]` explicitly; status enum with an enforced lifecycle (`new → open → in_progress → resolved → closed`, reopening allowed, illegal jumps rejected with 409), integer priority (1 = highest), a priority-derived SLA `due_date`, a `resolved_at` timestamp, optional Category
 - **Comment** — belongs to a Ticket and an author (User)
 - **Category** — seeded with real helpdesk categories (Printer, Network, M365/Exchange, Yardi/Property Software, Account Access, Hardware)
-- **AuditLogEntry** — written automatically whenever a ticket's status or assignee changes: field, old value, new value, actor, timestamp
+- **AuditLogEntry** — written automatically on every ticket change (status, assignee, priority, title, description, category): field, old value, new value, actor, timestamp
 
 ## API reference
 
 | Method | Route | Auth | Description |
 | --- | --- | --- | --- |
-| POST | `/auth/register` | — | Create account (400 on duplicate email) |
+| POST | `/auth/register` | — | Create account (409 on duplicate email, rate limited, emails case-insensitive) |
 | POST | `/auth/login` | — | OAuth2 password form → JWT (rate limited) |
 | GET | `/users/me` | user | Current user |
 | GET | `/users` | admin | List users |
 | GET | `/categories` | user | List categories |
-| POST | `/categories` | admin | Create category |
-| POST | `/tickets` | user | Create ticket — owner always comes from the token |
-| GET | `/tickets` | user | Filters: `status`, `category_id`, `assignee_id`, `q`; `sort=priority\|-priority\|created_at\|-created_at`; `limit`/`offset` pagination; returns `{items, total, limit, offset}` |
+| POST | `/categories` | admin | Create category (409 on duplicate) |
+| POST | `/tickets` | user | Create ticket — owner always comes from the token; starts as `new` with an SLA due date |
+| GET | `/tickets` | user | Filters: `status`, `category_id`, `assignee_id`, `owner_id`, `q`; `sort=priority\|-priority\|created_at\|-created_at\|due_date`; `limit`/`offset` pagination; returns `{items, total, limit, offset}` |
+| GET | `/tickets/stats` | user | Queue health: counts by status, unresolved/P1/unassigned/overdue, avg resolution time |
 | GET | `/tickets/{id}` | user | Ticket with nested comments |
-| PATCH | `/tickets/{id}` | owner/admin | Partial update (`exclude_unset`); changing `assignee_id` is admin-only and triggers the email notification |
+| PATCH | `/tickets/{id}` | owner/assignee/admin | Partial update (`exclude_unset`); illegal status transitions 409; changing `assignee_id` is admin-only and triggers the email notification |
 | DELETE | `/tickets/{id}` | admin | Delete ticket |
-| GET | `/tickets/{id}/audit` | user | Status/assignment history |
+| GET | `/tickets/{id}/audit` | user | Full change history (status, assignment, priority, title, description, category) |
 | POST | `/tickets/{id}/comments` | user | Add comment — author always comes from the token |
+
+Non-admins only see tickets they own or are assigned to — list, detail, audit, and comments are all scoped, and out-of-scope IDs return 404, not 403, so ticket IDs can't be probed.
 
 ## Testing
 
 ```bash
-pytest --cov=app     # 44 tests, ~89% coverage
+pytest --cov=app     # 60 backend tests, ~92% coverage (fails under 85%)
 ruff check .         # lint
+
+cd client
+npm test             # 28 frontend tests (vitest + Testing Library)
+npm run lint         # oxlint
 ```
 
-Tests cover: registration/login flows (including duplicate email and wrong password), token-derived ownership (a client cannot claim another owner), admin-only routes returning 403 for regular users, partial updates changing only sent fields, audit entries on status/assignee changes, and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
+Backend tests cover: registration/login flows (duplicate/case-variant emails, wrong passwords, bcrypt length cap), token-derived ownership (a client cannot claim another owner), visibility scoping (other users' tickets are invisible, assignees can work their tickets), the status lifecycle (legal chains pass, illegal jumps 409, `resolved_at` stamping), SLA due dates, queue stats, audit entries for every changed field, admin-only routes returning 403, partial updates changing only sent fields, and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
 
-Tests run on SQLite locally and on PostgreSQL 16 in CI (`TEST_DATABASE_URL`).
+Frontend tests cover: API error mapping and 401 sign-out handling, the transition map staying consistent with the status list, overdue logic, login/register flows, debounced search, queue scope chips, stats tiles, and pagination.
+
+Backend tests run on SQLite locally and on PostgreSQL 16 in CI (`TEST_DATABASE_URL`).
 
 ## Email notifications
 
@@ -97,20 +129,26 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 `.github/workflows/ci.yml` runs on every push and PR:
 
-1. **test** — ruff + pytest against a PostgreSQL 16 service container
-2. **frontend** — oxlint + production build of the client
+1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), then pytest with the coverage gate
+2. **frontend** — oxlint + vitest + production build of the client
 3. **deploy** — on merge to `main` only, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
 
 ## Deployment
 
-- **Backend** → Render/Railway: set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`; run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`; run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`
 
 ## Key design decisions
 
 - **`owner_id` and `assignee_id` are both FKs to `users`** — a real two-roles-one-table relationship; SQLAlchemy requires explicit `foreign_keys=[...]` to disambiguate.
+- **Status lifecycle is enforced server-side** — a closed ticket must be reopened before it can move again; the UI only offers legal transitions, but the API is the authority (409 otherwise).
+- **Visibility is scoped at the query level** — one `visible_tickets()` helper feeds list, detail, audit, comments, and stats, so a scoping rule can't be forgotten on a new endpoint.
 - **Owner comes from the JWT, never the request body** — otherwise a client could create tickets in someone else's name. Same for comment authors.
 - **Audit log is a separate table** — history is a requirement of its own; overwriting fields loses it.
 - **Email failure never blocks assignment** — a secondary concern (notify) must not break a primary one (assign).
-- **At 10× scale**: indexes already exist on `status` and `assignee_id`; next would be connection pooling, comment pagination, and caching the category list.
+- **At 10× scale**: indexes already exist on `status`, `assignee_id`, and `category_id`, and list queries eager-load their relations; next would be connection pooling, comment pagination, and caching the category list.
 - **For production hardening**: structured logging, a staging environment, team-scoped visibility instead of a single admin flag, soft deletes.
+
+## License
+
+[MIT](LICENSE)

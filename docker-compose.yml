@@ -1,0 +1,54 @@
+# Prod-shaped local stack: Postgres 16 + API + client dev server.
+#
+#   docker compose up --build
+#
+# UI on http://localhost:5173, API on http://localhost:8000. First run:
+#   docker compose exec api python -m app.seed --demo
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tickets
+      POSTGRES_PASSWORD: tickets
+      POSTGRES_DB: tickets
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tickets"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://tickets:tickets@db:5432/tickets
+      # Compose-local only — set a real secret (and real admin creds) in prod.
+      JWT_SECRET: compose-local-secret-change-me-0123456789ab
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: admin123
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      VITE_PROXY_TARGET: http://api:8000
+    volumes:
+      - ./client:/app
+      - client_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  client_node_modules:
