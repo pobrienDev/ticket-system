@@ -107,7 +107,7 @@ Non-admins only see tickets they own or are assigned to — list, detail, audit,
 ## Testing
 
 ```bash
-pytest --cov=app     # 60 backend tests, ~92% coverage (fails under 85%)
+pytest --cov=app     # 61 backend tests, ~92% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
