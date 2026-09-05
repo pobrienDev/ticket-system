@@ -1,3 +1,10 @@
+"""Database engine and session factory.
+
+Which database backs the app is decided entirely by DATABASE_URL: SQLite for
+local development (zero setup), Postgres in CI and production. Nothing else
+in the codebase needs to know which one is in use.
+"""
+
 import os
 
 from dotenv import load_dotenv
@@ -21,5 +28,9 @@ if DATABASE_URL.startswith("sqlite"):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+# One Session per request (see dependencies.get_db); explicit commits only.
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+# Every model inherits from Base, so Base.metadata describes the full schema —
+# that is what the test suite's create_all and Alembic's autogenerate read.
 Base = declarative_base()

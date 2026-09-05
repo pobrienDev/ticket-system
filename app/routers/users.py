@@ -1,3 +1,9 @@
+"""Account endpoints: registration, login, and user lookups.
+
+Two routers live here because they have different URL prefixes: /auth for the
+unauthenticated credential flow and /users for authenticated lookups.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
@@ -39,7 +45,12 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    # OAuth2PasswordRequestForm means form-encoded username/password (the
+    # OAuth2 password-grant convention), which is why the client sends this
+    # one request as a form rather than JSON.
     user = db.query(models.User).filter(models.User.email == form_data.username.lower()).first()
+    # One error message for both "no such user" and "wrong password", so the
+    # endpoint can't be used to discover which emails have accounts.
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,6 +66,8 @@ def read_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 
+# Admin-only: this is the assignee picker's data source, and a directory of
+# every account is not something regular users should be able to pull.
 @users_router.get("", response_model=list[schemas.UserResponse])
 def list_users(
     db: Session = Depends(get_db),

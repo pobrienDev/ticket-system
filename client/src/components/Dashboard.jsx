@@ -1,3 +1,7 @@
+// The main authenticated screen. Owns the queue state (filters, tickets,
+// pagination, stats) and switches between the list view and TicketDetail.
+// Child components are presentational and report intent upward through
+// callbacks; all API access for the list view happens here.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api } from '../api'
 import FilterBar from './FilterBar'
@@ -107,6 +111,8 @@ function Dashboard({ user, onLogout }) {
     [apiFilters],
   )
 
+  // Any mutation (create, patch, delete) can change both the list and the
+  // stats tiles, so they are always refreshed together.
   const refresh = useCallback(() => {
     loadTickets()
     loadStats()

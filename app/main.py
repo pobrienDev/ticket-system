@@ -1,3 +1,12 @@
+"""Application entry point: assembles the FastAPI app.
+
+Everything here is wiring — logging, rate limiting, CORS, and router
+registration. Business logic lives in the routers; persistence in models
+and database; the API contract in schemas. Run with:
+
+    uvicorn app.main:app --reload
+"""
+
 import logging
 import os
 
@@ -25,6 +34,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# slowapi reads the limiter off app.state and needs a handler registered to
+# turn RateLimitExceeded into a proper 429 response.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -40,6 +51,8 @@ if cors_origins:
         allow_headers=["*"],
     )
 
+# Each router owns a URL prefix (/auth, /users, /tickets, /categories); the
+# comments router nests under /tickets/{id}/comments.
 app.include_router(users.auth_router)
 app.include_router(users.users_router)
 app.include_router(tickets.router)

@@ -1,3 +1,6 @@
+"""Assignment emails. The provider call is mocked at send_email so the real
+error handling runs and the suite never touches the network."""
+
 import logging
 from unittest.mock import patch
 

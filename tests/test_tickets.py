@@ -1,3 +1,6 @@
+"""Ticket CRUD: creation, listing/filtering/pagination, partial updates,
+permissions, and the audit entries written for status and assignment."""
+
 from app import models
 
 

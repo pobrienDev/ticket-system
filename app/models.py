@@ -1,3 +1,13 @@
+"""SQLAlchemy ORM models — the persistent shape of the domain.
+
+Domain rules that belong with the data (the status transition map and SLA
+targets) also live here rather than in the HTTP layer, so they can be reused
+by routers, the seed script, and tests alike.
+
+These classes describe what the database stores. What the API accepts and
+returns is a separate concern, defined in schemas.py.
+"""
+
 import datetime
 import enum
 
@@ -96,6 +106,8 @@ class Ticket(Base):
     owner = relationship("User", foreign_keys=[owner_id])
     assignee = relationship("User", foreign_keys=[assignee_id])
     category = relationship("Category", back_populates="tickets")
+    # Comments and audit entries have no meaning without their ticket, so they
+    # are deleted with it (cascade) rather than left as orphans.
     comments = relationship(
         "Comment", back_populates="ticket", cascade="all, delete-orphan", order_by="Comment.created_at"
     )
@@ -121,6 +133,12 @@ class Comment(Base):
 
 
 class AuditLogEntry(Base):
+    """One field change on one ticket: who changed what, from what, to what.
+
+    Append-only by convention — nothing in the app updates or deletes rows
+    here except the cascade when a ticket itself is deleted.
+    """
+
     __tablename__ = "audit_log_entries"
 
     id = Column(Integer, primary_key=True)

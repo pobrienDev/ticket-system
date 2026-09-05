@@ -1,5 +1,9 @@
+// One row in the queue. The whole card is a single <button> so it is
+// keyboard-focusable and announced as one actionable item by screen readers.
 import { isOverdue, priorityLabel, statusLabel } from '../constants'
 
+// Formats API timestamps (always UTC with an explicit offset) in the
+// viewer's locale and timezone.
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 function TicketCard({ ticket, onSelect }) {

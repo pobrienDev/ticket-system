@@ -1,3 +1,12 @@
+// Root component: decides which of three screens to show based on auth state.
+//
+//   checking   -> a stored token is being validated against /users/me
+//   bootError  -> the API could not be reached (token kept, retry offered)
+//   !user      -> no valid session: the login/register page
+//   user       -> the dashboard
+//
+// A 401 on any later request is routed back here via the unauthorized
+// handler, so an expired session always lands on the login page cleanly.
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api, getToken, setToken, setUnauthorizedHandler } from './api'
 import AuthPage from './components/AuthPage'

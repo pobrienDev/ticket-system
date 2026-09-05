@@ -1,3 +1,7 @@
+// Single-ticket view: header/badges, status-priority-assignee controls,
+// an inline edit form for title/description/category, the audit history,
+// and comments. Every change goes through applyPatch so in-flight state,
+// error display, and list/stats refresh are handled once.
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { PRIORITIES, TRANSITIONS, isOverdue, priorityLabel, statusLabel } from '../constants'
@@ -103,7 +107,11 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
     )
   }
 
+  // Mirrors the backend's edit rule (owner, assignee, or admin). The API
+  // enforces it regardless; this only decides whether to render controls.
   const canEdit = user.is_admin || ticket.owner.id === user.id || ticket.assignee?.id === user.id
+  // The status select offers only legal next states, so the UI can't even
+  // express a transition the server would reject with a 409.
   const statusOptions = [ticket.status, ...TRANSITIONS[ticket.status]]
   const overdue = isOverdue(ticket)
 

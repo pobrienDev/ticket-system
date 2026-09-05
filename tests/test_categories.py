@@ -1,3 +1,6 @@
+"""Category listing (any user) and creation (admin only, duplicates rejected)."""
+
+
 def test_list_categories_requires_auth(client):
     assert client.get("/categories").status_code == 401
 

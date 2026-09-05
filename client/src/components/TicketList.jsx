@@ -1,3 +1,5 @@
+// Renders the current page of tickets, or an empty state when the filters
+// match nothing. Selection is reported upward; the list holds no state.
 import TicketCard from './TicketCard'
 
 function TicketList({ tickets, onSelect }) {

@@ -1,3 +1,9 @@
+"""Ticket categories: readable by any user, created by admins only.
+
+The category list is small and changes rarely (it is seeded with real
+helpdesk queues), so there is no update or delete endpoint by design.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session

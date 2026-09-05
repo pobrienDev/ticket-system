@@ -1,3 +1,6 @@
+"""Queue stats endpoint: counts, scoping to the caller's visible tickets, auth."""
+
+
 def create_ticket(client, **overrides):
     payload = {"title": "Stats ticket"}
     payload.update(overrides)

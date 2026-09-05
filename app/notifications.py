@@ -1,3 +1,11 @@
+"""Outbound email via the SendGrid REST API.
+
+Design rule for this module: notifications are a secondary concern. A failed
+or slow email must never break the primary operation that triggered it, so
+notify_* functions swallow provider errors (after logging) and the router
+schedules them as background tasks off the request path.
+"""
+
 import logging
 import os
 
@@ -13,6 +21,7 @@ class EmailAPIError(Exception):
 
 
 def send_email(to: str, subject: str, body: str) -> None:
+    """Send one plain-text email, raising EmailAPIError on any provider failure."""
     api_key = os.environ.get("SENDGRID_API_KEY")
     from_email = os.environ.get("EMAIL_FROM", "tickets@example.com")
 

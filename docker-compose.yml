@@ -25,10 +25,12 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg2://tickets:tickets@db:5432/tickets
-      # Compose-local only — set a real secret (and real admin creds) in prod.
-      JWT_SECRET: compose-local-secret-change-me-0123456789ab
-      ADMIN_EMAIL: admin@example.com
-      ADMIN_PASSWORD: admin123
+      # Read from the host environment or a .env file in this directory;
+      # the fallbacks after :- are for local demos only and must be
+      # overridden for any shared or production deployment.
+      JWT_SECRET: ${JWT_SECRET:-compose-local-secret-change-me-0123456789ab}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     ports:
       - "8000:8000"
     depends_on:

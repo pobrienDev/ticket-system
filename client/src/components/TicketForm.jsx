@@ -1,3 +1,6 @@
+// New-ticket form. A controlled form holding string values from the inputs;
+// the numeric/nullable conversions happen once at submit so the API always
+// receives the types it expects (priority as a number, category_id or null).
 import { useState } from 'react'
 import { PRIORITIES } from '../constants'
 

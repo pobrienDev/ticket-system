@@ -1,3 +1,7 @@
+// Domain vocabulary shared by every component: status and priority lists,
+// the status transition map, and small helpers derived from them. Values
+// here must match the backend enums in app/models.py.
+
 export const STATUSES = [
   { value: 'new', label: 'New' },
   { value: 'open', label: 'Open' },

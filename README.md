@@ -73,6 +73,8 @@ npm run dev
 
 UI at http://localhost:5173. The Vite dev server proxies API routes to :8000, so there's no CORS setup in development. For a separately-hosted frontend, set `VITE_API_URL` to the backend origin at build time.
 
+The root `package.json` carries shortcuts for the same commands from the repo root: `npm run dev:server`, `npm run dev:client`, `npm run install:client`, `npm run lint:server` / `lint:client`, `npm test`, and `npm run build`.
+
 Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.torres@example.com` (admins), requesters `priya.patel@example.com` / `dan.kowalski@example.com` / `emma.wright@example.com` — all with password `demo1234` (override with `DEMO_PASSWORD`).
 
 ## Data model

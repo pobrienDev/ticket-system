@@ -1,3 +1,11 @@
+"""Alembic runtime configuration.
+
+Binds Alembic to the application's own DATABASE_URL and model metadata, so
+`alembic upgrade head` targets whichever database the app is configured for
+and `alembic check` / autogenerate can diff the models against the migration
+history.
+"""
+
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool

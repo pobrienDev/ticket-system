@@ -1,3 +1,10 @@
+"""Request rate limiting for the credential endpoints.
+
+Limits are keyed by client IP. Behind a reverse proxy that means the proxy's
+address unless trusted forwarded-for handling is configured — acceptable for
+the current deployment shape, and noted here so it isn't forgotten.
+"""
+
 import os
 
 from slowapi import Limiter

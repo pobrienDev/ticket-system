@@ -3,6 +3,8 @@ name: CI
 on: [push, pull_request]
 
 jobs:
+  # Backend: lint, migrations, and tests — all against a real Postgres 16
+  # service container so engine-specific behavior is caught before deploy.
   test:
     runs-on: ubuntu-latest
     services:
@@ -37,6 +39,8 @@ jobs:
           alembic check
       - run: pytest --cov=app
 
+  # Frontend: lockfile-exact install, lint, unit tests, and a production
+  # build so bundling errors surface here rather than at deploy time.
   frontend:
     runs-on: ubuntu-latest
     defaults:

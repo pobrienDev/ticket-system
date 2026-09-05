@@ -11,6 +11,8 @@ const apiProxy = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // vitest: a DOM implementation for component tests, describe/it/expect as
+  // globals, and jest-dom matchers registered once in the setup file.
   test: {
     environment: 'jsdom',
     globals: true,

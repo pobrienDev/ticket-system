@@ -1,3 +1,6 @@
+"""Comments: author always comes from the token; missing tickets and empty bodies rejected."""
+
+
 def make_ticket(client):
     response = client.post("/tickets", json={"title": "Needs discussion"})
     assert response.status_code == 201

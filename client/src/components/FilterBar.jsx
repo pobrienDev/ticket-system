@@ -1,3 +1,6 @@
+// Queue controls: scope chips, search, status/category/assignee filters, and
+// sort. Stateless apart from the search buffer — every change is reported
+// to the Dashboard as a new filters object.
 import { useEffect, useState } from 'react'
 import { STATUSES } from '../constants'
 

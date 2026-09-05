@@ -1,3 +1,12 @@
+"""Password hashing and JWT issuance/verification.
+
+Passwords are stored as bcrypt hashes: one-way, individually salted, and
+deliberately slow to compute. Sessions are stateless JWTs signed with
+JWT_SECRET (HS256); the server verifies a signature instead of looking up
+a session row, which is what lets the API scale horizontally without shared
+session storage.
+"""
+
 import datetime
 import os
 
@@ -18,6 +27,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 
 
 
 def hash_password(password: str) -> str:
+    # gensalt() produces a fresh random salt per call, so identical passwords
+    # never share a hash; the salt is embedded in the returned string.
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
@@ -29,6 +40,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict, expires_minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
+    # Callers pass the claims (the app uses {"sub": user id}); this adds the
+    # expiry and signs. Claims are readable by anyone holding the token —
+    # a JWT is signed, not encrypted — so nothing sensitive goes in here.
     to_encode = data.copy()
     expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=expires_minutes)
     to_encode.update({"exp": expire})

@@ -1,3 +1,9 @@
+"""Ticket comments. Nested under /tickets/{ticket_id}/comments.
+
+Comments are read as part of the ticket detail response, so this router only
+needs a create endpoint.
+"""
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 

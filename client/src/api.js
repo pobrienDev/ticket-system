@@ -1,3 +1,7 @@
+// The entire network layer: one request() helper plus a typed map of API
+// calls. Components never touch fetch directly, so auth headers, error
+// shaping, and 401 handling live in exactly one place.
+
 const TOKEN_KEY = 'ticket_token'
 
 // Same-origin by default (the Vite dev proxy forwards to the API). For a
@@ -33,6 +37,9 @@ export function setUnauthorizedHandler(handler) {
   unauthorizedHandler = handler
 }
 
+// FastAPI error bodies come in two shapes: a plain string `detail` from
+// HTTPException, or an array of validation errors (422). Both are flattened
+// to one human-readable message so components can just display err.message.
 function detailToMessage(data, status) {
   if (typeof data?.detail === 'string') return data.detail
   if (Array.isArray(data?.detail)) {
@@ -73,6 +80,8 @@ export const api = {
   listUsers: () => request('/users'),
   listCategories: () => request('/categories'),
   listTickets: (filters = {}) => {
+    // Only meaningful filters become query params; '' / null / 'all' mean
+    // "no filter" in the UI and are dropped rather than sent.
     const params = new URLSearchParams()
     for (const [key, value] of Object.entries(filters)) {
       if (value !== '' && value !== null && value !== undefined && value !== 'all') {

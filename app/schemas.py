@@ -1,3 +1,15 @@
+"""Pydantic schemas — the API contract.
+
+Request schemas (…Create/…Update) define what clients may send and enforce
+limits before any handler code runs; response schemas (…Response) define
+exactly which fields leave the server. Keeping these separate from the ORM
+models means a database column is never exposed by accident (User has a
+hashed_password column; no response schema mentions it).
+
+Length caps on text fields are a deliberate part of the contract: they bound
+storage, response size, and search cost.
+"""
+
 import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -6,6 +18,8 @@ from .models import TicketStatus
 
 
 class ORMModel(BaseModel):
+    # from_attributes lets a response schema be built straight from a
+    # SQLAlchemy object (reading attributes) instead of a dict.
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -105,6 +119,8 @@ class TicketDetailResponse(TicketResponse):
 
 
 class TicketListResponse(BaseModel):
+    # Paginated envelope: `total` is the count of everything matching the
+    # filters, so clients can render "showing X of Y" and know when to stop.
     items: list[TicketResponse]
     total: int
     limit: int

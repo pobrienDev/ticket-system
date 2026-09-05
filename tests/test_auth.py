@@ -1,3 +1,5 @@
+"""Registration, login, token validation, and admin gating on user lookups."""
+
 from tests.conftest import TEST_PASSWORD
 
 

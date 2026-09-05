@@ -1,3 +1,7 @@
+/* Component styles. Every color and shadow references a token from
+   index.css, which is what makes dark mode a palette swap with no
+   per-component overrides. Class names follow block__element--modifier. */
+
 .page {
   max-width: 880px;
   margin: 0 auto;

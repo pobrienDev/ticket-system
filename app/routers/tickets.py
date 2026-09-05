@@ -1,3 +1,20 @@
+"""Ticket endpoints: create, list/search, stats, detail, update, delete, audit.
+
+Authorization model, applied consistently across this module:
+
+* Visibility — admins see every ticket; everyone else sees only tickets they
+  own or are assigned to. Enforced at the query level by visible_tickets(),
+  which every read and write path builds on. Out-of-scope ids return 404 so
+  that ticket ids cannot be probed.
+* Editing — the owner, the assignee, or an admin may change a ticket;
+  assignment itself is admin-only; deletion is admin-only.
+* Lifecycle — status changes must follow models.ALLOWED_TRANSITIONS; an
+  illegal move is a 409 because the request conflicts with current state,
+  not because it is malformed or unauthorized.
+
+Every change to an auditable field writes an AuditLogEntry.
+"""
+
 import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -11,6 +28,8 @@ from ..notifications import notify_assignment
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
+# Whitelist of sortable columns. Clients pick a key; they never supply SQL, so
+# there is no way to inject an arbitrary ORDER BY.
 SORT_OPTIONS = {
     "priority": models.Ticket.priority.asc(),  # 1 = highest, so ascending puts urgent first
     "-priority": models.Ticket.priority.desc(),
@@ -129,6 +148,8 @@ def list_tickets(
     return schemas.TicketListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
+# Declared before "/{ticket_id}" on purpose: routes match in order, and
+# "/tickets/stats" must not be parsed as a ticket id.
 @router.get("/stats", response_model=schemas.TicketStatsResponse)
 def ticket_stats(
     db: Session = Depends(get_db),
@@ -204,8 +225,12 @@ def update_ticket(
     current_user: models.User = Depends(get_current_user),
 ):
     ticket = get_visible_ticket_or_404(ticket_id, db, current_user)
+    # exclude_unset keeps only the fields the client actually sent — that is
+    # what makes this a true partial update.
     changes = update.model_dump(exclude_unset=True)
 
+    # Checks run cheapest-and-broadest first: can you see it (404), is there
+    # anything to do (400), may you edit it (403), is the change legal (409).
     if not changes:
         raise HTTPException(status_code=400, detail="No fields to update")
     can_edit = current_user.is_admin or current_user.id in (ticket.owner_id, ticket.assignee_id)

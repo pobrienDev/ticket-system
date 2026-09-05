@@ -1,3 +1,6 @@
+"""Status lifecycle rules, resolved_at bookkeeping, SLA due dates, and audit
+coverage of the non-status fields."""
+
 from app import models
 
 
