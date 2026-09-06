@@ -11,10 +11,25 @@ storage, response size, and search cost.
 """
 
 import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from .models import TicketStatus
+
+
+def _strip_non_blank(value: str) -> str:
+    # min_length alone would accept "   " — a comment or title that is only
+    # whitespace. Trim, then require something to be left.
+    value = value.strip()
+    if not value:
+        raise ValueError("must not be blank")
+    return value
+
+
+# A string that is stored trimmed and can never be empty or whitespace-only.
+# Used for every human-entered name/title/body that must carry content.
+NonBlank = Annotated[str, AfterValidator(_strip_non_blank)]
 
 
 class ORMModel(BaseModel):
@@ -48,7 +63,7 @@ class Token(BaseModel):
 
 
 class CategoryCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: NonBlank = Field(max_length=100)
 
 
 class CategoryResponse(ORMModel):
@@ -60,7 +75,7 @@ class CategoryResponse(ORMModel):
 
 
 class CommentCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=5000)
+    body: NonBlank = Field(max_length=5000)
 
 
 class CommentResponse(ORMModel):
@@ -74,14 +89,15 @@ class CommentResponse(ORMModel):
 
 
 class TicketCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: NonBlank = Field(max_length=200)
+    # Description may legitimately be empty; it is not NonBlank.
     description: str = Field(default="", max_length=10_000)
     category_id: int | None = None
     priority: int = Field(default=3, ge=1, le=5)  # 1 = highest
 
 
 class TicketUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
+    title: NonBlank | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=10_000)
     status: TicketStatus | None = None
     priority: int | None = Field(default=None, ge=1, le=5)

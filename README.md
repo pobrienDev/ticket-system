@@ -106,10 +106,12 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 
 Non-admins only see tickets they own or are assigned to — list, detail, audit, and comments are all scoped, and out-of-scope IDs return 404, not 403, so ticket IDs can't be probed.
 
+Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, password 8–72), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
+
 ## Testing
 
 ```bash
-pytest --cov=app     # 61 backend tests, ~92% coverage (fails under 85%)
+pytest --cov=app     # 120 backend tests, ~95% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
@@ -117,7 +119,7 @@ npm test             # 28 frontend tests (vitest + Testing Library)
 npm run lint         # oxlint
 ```
 
-Backend tests cover: registration/login flows (duplicate/case-variant emails, wrong passwords, bcrypt length cap), token-derived ownership (a client cannot claim another owner), visibility scoping (other users' tickets are invisible, assignees can work their tickets), the status lifecycle (legal chains pass, illegal jumps 409, `resolved_at` stamping), SLA due dates, queue stats, audit entries for every changed field, admin-only routes returning 403, partial updates changing only sent fields, and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
+Backend tests cover: registration/login flows (duplicate and case-variant emails, the bcrypt length cap, identical error responses for unknown-user vs wrong-password, expired tokens, immediate 401 for a deleted user's still-valid token); token-derived ownership (a client cannot claim another owner or author); visibility scoping (strangers get 404 on every read and write path, a user's list is exactly owned + assigned tickets, filters can never widen scope, unassigning revokes access); the full status lifecycle (every one of the 20 status pairs checked against the transition map, same-status no-ops, `resolved_at` stamped on resolve / kept on close / cleared on reopen); SLA due dates for every priority; list filters, all sort orders, pagination, and query-parameter validation; partial updates (only sent fields change, explicit nulls rejected, empty bodies 400); input validation (length caps, blank titles/comments/names rejected and values trimmed); audit entries for every changed field including clipping and category names; comment ordering; cascade deletion of comments and audit rows; queue stats (zero-filled empty state, the unresolved qualifier, overdue detection, exact average resolution time); admin-only routes returning 403; and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
 
 Frontend tests cover: API error mapping and 401 sign-out handling, the transition map staying consistent with the status list, overdue logic, login/register flows, debounced search, queue scope chips, stats tiles, and pagination.
 

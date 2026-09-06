@@ -88,6 +88,17 @@ def test_empty_comment_rejected(authed_client):
     assert add_comment(authed_client, ticket["id"], "").status_code == 422
 
 
+def test_blank_comment_rejected_and_bodies_are_trimmed(authed_client):
+    # A body of only whitespace would render as an empty bubble with an
+    # author and timestamp; it is rejected, and real bodies are stored
+    # without surrounding whitespace.
+    ticket = make_ticket(authed_client)
+    assert add_comment(authed_client, ticket["id"], "   \n\t ").status_code == 422
+    response = add_comment(authed_client, ticket["id"], "  trimmed  ")
+    assert response.status_code == 201
+    assert response.json()["body"] == "trimmed"
+
+
 def test_overlong_comment_rejected(authed_client):
     # 5,000-character cap (schemas.CommentCreate); rejected by validation
     # before the handler runs, so nothing is stored.

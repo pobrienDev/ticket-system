@@ -53,6 +53,19 @@ def test_create_ticket_unknown_category_rejected(authed_client):
     assert response.status_code == 400
 
 
+def test_blank_title_rejected_and_titles_are_trimmed(authed_client):
+    # min_length alone would accept a whitespace-only title. The rule is
+    # "must contain text", applied on create and on update, and stored
+    # trimmed either way.
+    assert authed_client.post("/tickets", json={"title": "   "}).status_code == 422
+    made = create_ticket(authed_client, title="  Padded title  ")
+    assert made["title"] == "Padded title"
+
+    assert authed_client.patch(f"/tickets/{made['id']}", json={"title": " \t "}).status_code == 422
+    updated = authed_client.patch(f"/tickets/{made['id']}", json={"title": "  Renamed  "}).json()
+    assert updated["title"] == "Renamed"
+
+
 def test_create_ticket_rejects_overlong_fields(authed_client):
     # Length caps are part of the API contract (they bound storage, response
     # size, and search cost); validation rejects before the handler runs.
