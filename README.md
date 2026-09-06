@@ -115,7 +115,7 @@ pytest --cov=app     # 129 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
-npm test             # 47 frontend tests (vitest + Testing Library)
+npm test             # 53 frontend tests (vitest + Testing Library)
 npm run lint         # oxlint
 ```
 
