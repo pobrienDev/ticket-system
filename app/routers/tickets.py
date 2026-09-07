@@ -38,9 +38,6 @@ SORT_OPTIONS = {
     "due_date": models.Ticket.due_date.asc(),
 }
 
-# Unresolved = still needs work. Used by scoping-free helpers below and stats.
-UNRESOLVED_STATUSES = (models.TicketStatus.new, models.TicketStatus.open, models.TicketStatus.in_progress)
-
 
 def visible_tickets(db: Session, user: models.User):
     """Tickets this user may see: admins see all, everyone else their own or assigned."""
@@ -166,7 +163,7 @@ def ticket_stats(
     ):
         by_status[status_value.value] = count
 
-    unresolved = scope.filter(models.Ticket.status.in_(UNRESOLVED_STATUSES))
+    unresolved = scope.filter(models.Ticket.status.in_(models.UNRESOLVED_STATUSES))
     p1_unresolved = unresolved.filter(models.Ticket.priority == 1).count()
     unassigned_unresolved = unresolved.filter(models.Ticket.assignee_id.is_(None)).count()
     overdue = unresolved.filter(models.Ticket.due_date < utcnow()).count()
@@ -273,7 +270,7 @@ def update_ticket(
         record_change(db, ticket, current_user, "status", ticket.status.value, new_status.value)
         if new_status == models.TicketStatus.resolved:
             ticket.resolved_at = utcnow()
-        elif new_status in UNRESOLVED_STATUSES:
+        elif new_status in models.UNRESOLVED_STATUSES:
             # Reopened: the ticket is back in the queue, so it no longer has a
             # resolution time. Moving resolved -> closed keeps resolved_at.
             ticket.resolved_at = None

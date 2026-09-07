@@ -80,7 +80,7 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 ## Data model
 
 - **User** — email, bcrypt-hashed password, `is_admin` flag
-- **Ticket** — belongs to an owner (User) and optionally an assignee (User) — two FKs to the same table, so relationships declare `foreign_keys=[...]` explicitly; status enum with an enforced lifecycle (`new → open → in_progress → resolved → closed`, reopening allowed, illegal jumps rejected with 409), integer priority (1 = highest), a priority-derived SLA `due_date`, a `resolved_at` timestamp, optional Category
+- **Ticket** — belongs to an owner (User) and optionally an assignee (User) — two FKs to the same table, so relationships declare `foreign_keys=[...]` explicitly; status enum with an enforced lifecycle (`new → open → in_progress → resolved → closed`, reopening allowed, illegal jumps rejected with 409), integer priority (1 = highest, range-checked by the database as well as the API), a priority-derived SLA `due_date`, a `resolved_at` timestamp, optional Category
 - **Comment** — belongs to a Ticket and an author (User)
 - **Category** — seeded with real helpdesk categories (Printer, Network, M365/Exchange, Yardi/Property Software, Account Access, Hardware)
 - **AuditLogEntry** — written automatically on every ticket change (status, assignee, priority, title, description, category): field, old value, new value, actor, timestamp
@@ -106,16 +106,16 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 
 Non-admins only see tickets they own or are assigned to — list, detail, audit, and comments are all scoped, and out-of-scope IDs return 404, not 403, so ticket IDs can't be probed.
 
-Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, password 8–72), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
+Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, password 8 characters to 72 bytes — bcrypt's limit), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
 
 ## Testing
 
 ```bash
-pytest --cov=app     # 129 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 150 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
-npm test             # 84 frontend tests (vitest + Testing Library)
+npm test             # 128 frontend tests (vitest + Testing Library)
 npm run lint         # oxlint
 ```
 
@@ -139,7 +139,7 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 ## Deployment
 
-- **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`; run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, and `APP_ENV=production` (disables the public API docs); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`
 
 ## Key design decisions
@@ -150,7 +150,7 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 - **Owner comes from the JWT, never the request body** — otherwise a client could create tickets in someone else's name. Same for comment authors.
 - **Audit log is a separate table** — history is a requirement of its own; overwriting fields loses it.
 - **Email failure never blocks assignment** — a secondary concern (notify) must not break a primary one (assign).
-- **At 10× scale**: indexes already exist on `status`, `assignee_id`, and `category_id`, and list queries eager-load their relations; next would be connection pooling, comment pagination, and caching the category list.
+- **At 10× scale**: indexes already exist on `status`, `owner_id`, `assignee_id`, and `category_id`, and list queries eager-load their relations; next would be connection pooling, comment pagination, and caching the category list.
 - **For production hardening**: structured logging, a staging environment, team-scoped visibility instead of a single admin flag, soft deletes.
 
 ## License
