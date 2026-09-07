@@ -111,7 +111,7 @@ Input validation runs before any handler: every text field has a length cap (tit
 ## Testing
 
 ```bash
-pytest --cov=app     # 161 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 167 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
@@ -139,7 +139,7 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 ## Deployment
 
-- **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, and `APP_ENV=production` (disables the public API docs); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
+- **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, `APP_ENV=production` (disables the public API docs), and `TRUST_PROXY_HEADERS=true` when a proxy or load balancer sits in front (so rate limits key on the real client, not the proxy); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`
 
 ## Key design decisions
