@@ -1,8 +1,9 @@
 """Application entry point: assembles the FastAPI app.
 
-Everything here is wiring — logging, rate limiting, CORS, and router
-registration. Business logic lives in the routers; persistence in models
-and database; the API contract in schemas. Run with:
+Everything here is wiring — logging, rate limiting, CORS, security headers,
+router registration, and the health check. Business logic lives in the
+routers; persistence in models and database; the API contract in schemas.
+Run with:
 
     uvicorn app.main:app --reload
 """
@@ -10,11 +11,12 @@ and database; the API contract in schemas. Run with:
 import logging
 import os
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .dependencies import get_db
@@ -28,10 +30,24 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+# APP_ENV=production turns off the interactive docs and the raw OpenAPI
+# spec. They are invaluable in development and for demos, but in production
+# they publish every route and schema to anyone who finds the URL.
+APP_ENV = os.environ.get("APP_ENV", "development").lower()
+
+
+def docs_settings(env: str) -> dict:
+    """FastAPI constructor arguments controlling the docs, by environment."""
+    if env == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
 app = FastAPI(
     title="Ticket Management System",
     description="Helpdesk-style ticket tracking: JWT auth, RBAC, audit logging, email notifications.",
     version="1.0.0",
+    **docs_settings(APP_ENV),
 )
 
 # slowapi reads the limiter off app.state and needs a handler registered to
@@ -51,6 +67,24 @@ if cors_origins:
         allow_headers=["*"],
     )
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Add the browser-protection headers that are safe for a JSON API.
+
+    nosniff stops a browser second-guessing content types; DENY blocks the
+    API (and /docs) from being framed by another site; the referrer policy
+    keeps URLs from leaking to third parties. Strict-Transport-Security is
+    deliberately absent — it must be set by whatever terminates TLS — and a
+    Content-Security-Policy would break the CDN-served /docs page.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    return response
+
+
 # Each router owns a URL prefix (/auth, /users, /tickets, /categories); the
 # comments router nests under /tickets/{id}/comments.
 app.include_router(users.auth_router)
@@ -62,10 +96,14 @@ app.include_router(categories.router)
 
 @app.get("/health", tags=["health"])
 def health(db: Session = Depends(get_db)):
-    # Touch the database so a deploy health check fails when the DB is down,
-    # not just when the process is up.
+    """Liveness and readiness in one: 200 only if the database answers.
+
+    A platform health check that only proved the process was up would keep
+    routing traffic to an instance whose database connection had failed;
+    the SELECT 1 makes the check reflect real readiness.
+    """
     try:
         db.execute(text("SELECT 1"))
-    except Exception as exc:  # pragma: no cover - only reachable with a dead DB
+    except SQLAlchemyError as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
     return {"status": "ok"}
