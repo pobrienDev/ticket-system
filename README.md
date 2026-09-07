@@ -111,7 +111,7 @@ Input validation runs before any handler: every text field has a length cap (tit
 ## Testing
 
 ```bash
-pytest --cov=app     # 150 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 161 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
