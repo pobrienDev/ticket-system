@@ -15,6 +15,7 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from .auth import BCRYPT_MAX_PASSWORD_BYTES
 from .models import TicketStatus
 
 
@@ -43,9 +44,18 @@ class ORMModel(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    # bcrypt only hashes the first 72 bytes; cap the length so two long
-    # passwords sharing a prefix can't silently verify as equal.
-    password: str = Field(min_length=8, max_length=72)
+    # bcrypt accepts at most 72 BYTES of password. max_length counts
+    # characters, which is only the same thing for ASCII, so the byte length
+    # is checked explicitly below — otherwise a 72-character password of
+    # multi-byte characters would pass validation and fail inside bcrypt.
+    password: str = Field(min_length=8, max_length=BCRYPT_MAX_PASSWORD_BYTES)
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode()) > BCRYPT_MAX_PASSWORD_BYTES:
+            raise ValueError(f"password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes")
+        return value
 
 
 class UserResponse(ORMModel):

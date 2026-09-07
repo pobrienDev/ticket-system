@@ -6,7 +6,9 @@ the per-request user reload in get_current_user. Nothing in the auth stack
 is mocked.
 """
 
-from app.auth import create_access_token
+import jwt
+
+from app.auth import SECRET_KEY, create_access_token
 from tests.conftest import TEST_PASSWORD
 
 # --- Registration -----------------------------------------------------------
@@ -47,9 +49,20 @@ def test_register_short_password_rejected(client):
 
 
 def test_register_overlong_password_rejected(client):
-    # bcrypt truncates at 72 bytes; longer passwords must be rejected, not silently clipped.
+    # bcrypt accepts at most 72 bytes; longer passwords must be rejected by
+    # validation, never handed to the hasher.
     response = client.post("/auth/register", json={"email": "new@example.com", "password": "x" * 73})
     assert response.status_code == 422
+
+
+def test_password_limit_is_bytes_not_characters(client):
+    # 72 multi-byte characters is 144 bytes: over bcrypt's limit even though
+    # the character count is within max_length. Must be a clean 422, not a
+    # 500 from inside bcrypt. A 72-byte ASCII password is still fine.
+    response = client.post("/auth/register", json={"email": "wide@example.com", "password": "é" * 72})
+    assert response.status_code == 422
+    response = client.post("/auth/register", json={"email": "ascii@example.com", "password": "x" * 72})
+    assert response.status_code == 201
 
 
 def test_email_is_case_insensitive(client):
@@ -142,6 +155,35 @@ def test_expired_token_rejected(client, test_user):
     expired = create_access_token({"sub": str(test_user.id)}, expires_minutes=-1)
     response = client.get("/users/me", headers={"Authorization": f"Bearer {expired}"})
     assert response.status_code == 401
+
+
+def test_token_without_expiry_or_subject_rejected(client, test_user):
+    # Only the secret holder could mint these, but decode requires both
+    # claims regardless: no token is ever valid forever or for nobody.
+    no_exp = jwt.encode({"sub": str(test_user.id)}, SECRET_KEY, algorithm="HS256")
+    assert client.get("/users/me", headers={"Authorization": f"Bearer {no_exp}"}).status_code == 401
+
+    no_sub = create_access_token({})
+    assert client.get("/users/me", headers={"Authorization": f"Bearer {no_sub}"}).status_code == 401
+
+
+def test_token_with_malformed_subject_rejected(client):
+    # A subject that is not a user id must be a 401, not a 500 from int().
+    for bad_sub in ("not-a-number", "", None):
+        token = create_access_token({"sub": bad_sub})
+        response = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401, f"sub={bad_sub!r}: {response.status_code}"
+
+
+def test_token_for_unknown_user_id_rejected(client):
+    token = create_access_token({"sub": "999999"})
+    assert client.get("/users/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+
+def test_token_carries_issued_at_and_expiry(test_user):
+    claims = jwt.decode(create_access_token({"sub": str(test_user.id)}), SECRET_KEY, algorithms=["HS256"])
+    assert claims["sub"] == str(test_user.id)
+    assert claims["exp"] - claims["iat"] == 60 * 60  # the default lifetime, in seconds
 
 
 def test_token_for_deleted_user_rejected(authed_client, test_user, db):
