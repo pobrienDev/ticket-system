@@ -26,6 +26,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The app targets Python 3.12 (ruff target-version, CI runner). Propose
+    # digest and patch moves within 3.12-slim, not jumps to a new Python.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /

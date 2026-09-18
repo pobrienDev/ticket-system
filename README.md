@@ -135,7 +135,8 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), then pytest with the coverage gate
 2. **frontend** — oxlint + vitest + production build of the client
-3. **deploy** — on merge to `main` only, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
+3. **image** — builds the Dockerfile and boots the app inside the image, so a Dockerfile change or base-image bump is tested, not just linted
+4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
 
 `.github/dependabot.yml` opens weekly PRs for pip, npm, the Docker base image digest, and Actions versions — the counterpart to everything being pinned. Minor and patch bumps arrive grouped; majors come one at a time.
 

@@ -56,10 +56,25 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Image: build the Dockerfile and boot the app inside it. Without this, a
+  # Dockerfile edit or a base-image bump could pass CI and still fail on the
+  # host, because the test job runs on the runner's Python, not the image's.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t ticket-system-api:ci .
+      - name: Boot check inside the image
+        run: |
+          docker run --rm \
+            -e JWT_SECRET=ci-image-secret-padded-past-32-bytes-minimum \
+            ticket-system-api:ci \
+            python -c "import app.main, sys; print('import ok on', sys.version)"
+
   deploy:
-    # Deploys on merge to main once both jobs pass. Uses a Render deploy hook:
+    # Deploys on merge to main once all three jobs pass. Uses a Render deploy hook:
     # create the hook in the Render dashboard and save it as the RENDER_DEPLOY_HOOK_URL secret.
-    needs: [test, frontend]
+    needs: [test, frontend, image]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
