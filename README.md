@@ -111,7 +111,7 @@ Input validation runs before any handler: every text field has a length cap (tit
 ## Testing
 
 ```bash
-pytest --cov=app     # 167 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 168 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
@@ -127,7 +127,7 @@ Backend tests run on SQLite locally and on PostgreSQL 16 in CI (`TEST_DATABASE_U
 
 ## Email notifications
 
-When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure handling is explicit: a failed email is logged with a warning and **never** blocks the assignment (see `app/notifications.py`). Without `SENDGRID_API_KEY` set, emails are logged to the console instead — dev needs no key.
+When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure handling is explicit: a failed email is logged with a warning and **never** blocks the assignment (see `app/notifications.py`). Without `SENDGRID_API_KEY` set, emails are logged to the console instead — dev needs no key. Set `APP_URL` to the frontend's origin and the email links straight to the ticket.
 
 ## CI/CD
 

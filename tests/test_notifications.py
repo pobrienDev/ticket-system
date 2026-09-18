@@ -13,19 +13,11 @@ key explicitly, send_email takes the console path.
 """
 
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 
-from app.notifications import EmailAPIError, notify_assignment, send_email
-
-
-class FakeTicket:
-    # notify_assignment only reads id and title; a stub avoids a database
-    # round-trip for the unit tests below.
-    id = 42
-    title = "Router replacement"
-
+from app.notifications import EmailAPIError, notify_assignment, send_email, ticket_link
 
 # --- send_email: the provider call ------------------------------------------
 
@@ -61,19 +53,26 @@ def test_send_email_with_api_key_posts_expected_request(monkeypatch):
     assert kwargs["timeout"] == 10
 
 
-def test_send_email_wraps_provider_errors(monkeypatch):
-    # Every httpx failure — a 5xx response or a transport error — surfaces as
-    # one EmailAPIError, so callers never need to know about httpx.
+def test_send_email_wraps_provider_errors_with_their_explanation(monkeypatch):
+    # A rejection (4xx/5xx) becomes an EmailAPIError that carries the
+    # provider's own explanation, so the log line says why; a transport
+    # error (DNS, timeout) becomes the same exception type.
     monkeypatch.setenv("SENDGRID_API_KEY", "sg-test-key")
 
-    with patch("app.notifications.httpx.post") as mock_post:
-        mock_post.return_value.raise_for_status.side_effect = httpx.HTTPError("503 Service Unavailable")
+    rejected = MagicMock()
+    rejected.status_code = 403
+    rejected.text = '{"errors":[{"message":"The from address does not match a verified Sender Identity"}]}'
+    rejected.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "403 Forbidden", request=MagicMock(), response=rejected
+    )
+    with patch("app.notifications.httpx.post", return_value=rejected):
         try:
             send_email(to="tech@example.com", subject="s", body="b")
         except EmailAPIError as exc:
-            assert "503" in str(exc)
+            assert "403" in str(exc)
+            assert "verified Sender Identity" in str(exc)
         else:
-            raise AssertionError("expected EmailAPIError for a 5xx response")
+            raise AssertionError("expected EmailAPIError for a rejected send")
 
     with patch("app.notifications.httpx.post", side_effect=httpx.ConnectError("dns failure")):
         try:
@@ -92,18 +91,27 @@ def test_notify_assignment_swallows_email_failure(caplog):
     # it can't break the assignment that triggered it.
     with patch("app.notifications.send_email", side_effect=EmailAPIError("SendGrid 503")):
         with caplog.at_level(logging.WARNING):
-            notify_assignment(FakeTicket(), "tech@example.com")  # must not raise
-    assert any("Email notification failed" in message for message in caplog.messages)
+            notify_assignment(42, "Router replacement", "tech@example.com")  # must not raise
+    assert any("Email notification failed for ticket 42" in m for m in caplog.messages)
 
 
 def test_notify_assignment_sends_expected_email():
     with patch("app.notifications.send_email") as mock_send:
-        notify_assignment(FakeTicket(), "tech@example.com")
+        notify_assignment(42, "Router replacement", "tech@example.com")
     mock_send.assert_called_once()
     kwargs = mock_send.call_args.kwargs
     assert kwargs["to"] == "tech@example.com"
     assert "Ticket #42" in kwargs["subject"]
     assert "Router replacement" in kwargs["body"]
+    assert "View it" not in kwargs["body"]  # no APP_URL configured
+
+
+def test_notify_assignment_links_to_the_ticket_when_app_url_is_set(monkeypatch):
+    monkeypatch.setenv("APP_URL", "https://tickets.example.com/")  # trailing slash tolerated
+    assert ticket_link(42) == "https://tickets.example.com/#ticket-42"
+    with patch("app.notifications.send_email") as mock_send:
+        notify_assignment(42, "Router replacement", "tech@example.com")
+    assert "View it: https://tickets.example.com/#ticket-42" in mock_send.call_args.kwargs["body"]
 
 
 # --- Through the API --------------------------------------------------------
@@ -120,6 +128,7 @@ def test_assignment_sends_one_email_to_the_new_assignee(authed_client, admin_cli
     kwargs = mock_send.call_args.kwargs
     assert kwargs["to"] == test_user.email
     assert f"Ticket #{made['id']}" in kwargs["subject"]
+    assert "Needs an owner" in kwargs["body"]
 
 
 def test_no_email_unless_the_assignee_actually_changes(authed_client, admin_client, test_user):

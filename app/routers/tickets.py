@@ -303,7 +303,9 @@ def update_ticket(
     # path — a slow or failed email (logged inside notify_assignment) must
     # never stall or break the PATCH response.
     if assignee_changed and new_assignee is not None:
-        background_tasks.add_task(notify_assignment, ticket, new_assignee.email)
+        # Plain values, not the ORM object: the task runs after this
+        # request's session is closed.
+        background_tasks.add_task(notify_assignment, ticket.id, ticket.title, new_assignee.email)
 
     return ticket
 
