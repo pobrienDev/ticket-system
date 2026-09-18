@@ -1,0 +1,37 @@
+# Build context for the backend image. The Dockerfile only COPYs
+# requirements.txt, alembic.ini, alembic/, and app/, but everything not
+# listed here is still sent to the daemon before the build starts — and
+# the venv, node_modules, and .git together are hundreds of megabytes.
+
+# Version control and editor/OS noise
+.git
+.github
+.claude
+.vscode
+.DS_Store
+
+# Python environments and caches
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# The frontend is built and hosted separately; compose bind-mounts it
+client
+
+# Secrets and local data must never reach an image layer
+.env
+*.db
+*.log
+
+# Not needed at runtime
+tests
+docs
+README.md
+LICENSE
+package.json
+docker-compose.yml
+Dockerfile
