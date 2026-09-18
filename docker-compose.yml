@@ -48,8 +48,12 @@ services:
       - client_node_modules:/app/node_modules
     ports:
       - "5173:5173"
+    # Wait for the image's HEALTHCHECK (/health, which needs the database),
+    # not just for the api container to exist, so the first proxied request
+    # can't land while migrations are still running.
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
