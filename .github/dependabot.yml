@@ -1,0 +1,33 @@
+# Everything in this repo is pinned (requirements.txt ==, package-lock.json,
+# the Dockerfile base digest, actions@vN), which means nothing updates by
+# itself. Dependabot is the other half of pinning: it proposes the bumps as
+# PRs, and CI decides whether each one is safe to merge.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    # One PR for all minor/patch bumps keeps the noise down; majors stay
+    # separate because they are the ones that need reading.
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -137,6 +137,8 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 2. **frontend** — oxlint + vitest + production build of the client
 3. **deploy** — on merge to `main` only, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
 
+`.github/dependabot.yml` opens weekly PRs for pip, npm, the Docker base image digest, and Actions versions — the counterpart to everything being pinned. Minor and patch bumps arrive grouped; majors come one at a time.
+
 ## Deployment
 
 - **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot, runs as a non-root user, and carries a `HEALTHCHECK` against `/health`): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, `APP_ENV=production` (disables the public API docs), and `TRUST_PROXY_HEADERS=true` when a proxy or load balancer sits in front (so rate limits key on the real client, not the proxy); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
