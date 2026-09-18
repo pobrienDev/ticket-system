@@ -1,6 +1,10 @@
 # Backend image: FastAPI + Alembic. Used by docker-compose and deployable
 # to any container host (Render, Railway, Fly).
-FROM python:3.12-slim
+# Tag for readability, digest for reproducibility: the tag moves with every
+# patch release, the digest names one exact multi-arch image (amd64 + arm64).
+# To bump: docker buildx imagetools inspect python:3.12-slim, copy the index
+# digest, rebuild, run the suite.
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 WORKDIR /app
 
