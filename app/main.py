@@ -94,6 +94,26 @@ app.include_router(comments.router)
 app.include_router(categories.router)
 
 
+@app.get("/", tags=["health"])
+def root():
+    """Say what this is to anyone who opens the bare URL.
+
+    The API has no pages of its own, so without this the service's address
+    answers 404 and looks broken to a person checking a deploy. It names the
+    service and points at the health check, at the frontend when APP_URL is
+    configured, and at the docs only where they are actually served. No
+    database access and no auth: it must answer even when everything else
+    is down, and it reveals nothing the frontend's own requests don't.
+    """
+    info = {"service": app.title, "health": "/health"}
+    app_url = os.environ.get("APP_URL", "").rstrip("/")
+    if app_url:
+        info["app"] = app_url
+    if APP_ENV != "production":
+        info["docs"] = "/docs"
+    return info
+
+
 @app.get("/health", tags=["health"])
 def health(db: Session = Depends(get_db)):
     """Liveness and readiness in one: 200 only if the database answers.

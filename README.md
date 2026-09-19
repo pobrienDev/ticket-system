@@ -91,6 +91,8 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 
 | Method | Route | Auth | Description |
 | --- | --- | --- | --- |
+| GET | `/` | — | Names the service and points at `/health`, the frontend (when `APP_URL` is set), and the docs (outside production) |
+| GET | `/health` | — | 200 only if the database answers (`SELECT 1`), else 503 — what the container and host health checks probe |
 | POST | `/auth/register` | — | Create account (409 on duplicate email, rate limited, emails case-insensitive) |
 | POST | `/auth/login` | — | OAuth2 password form → JWT (rate limited) |
 | GET | `/users/me` | user | Current user |
@@ -113,7 +115,7 @@ Input validation runs before any handler: every text field has a length cap (tit
 ## Testing
 
 ```bash
-pytest --cov=app     # 168 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 171 backend tests, ~97% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
