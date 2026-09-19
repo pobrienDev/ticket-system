@@ -4,6 +4,8 @@ A full-stack helpdesk ticket tracker: **FastAPI + PostgreSQL** backend, **React 
 
 Built from real helpdesk domain experience: an enforced status lifecycle, assignment, priority triage with SLA due dates, comments, and a full audit trail — the things a real ticket system actually needs.
 
+**Live:** https://ticket-system-azure-omega.vercel.app — register an account to try it. It runs on free tiers that sleep when idle, so the first request after a quiet spell can take up to a minute while the API wakes; after that it is fast.
+
 ## Demo
 
 ![Demo: signing in, filtering the queue, working a ticket, and reviewing its audit history](docs/demo.gif)
@@ -141,6 +143,8 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 `.github/dependabot.yml` opens weekly PRs for pip, npm, the Docker base image digest, and Actions versions — the counterpart to everything being pinned. Minor and patch bumps arrive grouped; majors come one at a time.
 
 ## Deployment
+
+The live instance runs the API on Render (built from the `Dockerfile`, Virginia), PostgreSQL 16 on Neon (same AWS region, direct endpoint), and the client on Vercel. Render's auto-deploy is off on purpose: the CI `deploy` job is the only thing that ships, so nothing reaches production without passing the test, frontend, and image jobs.
 
 - **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot, runs as a non-root user, and carries a `HEALTHCHECK` against `/health`): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, `APP_ENV=production` (disables the public API docs), and `TRUST_PROXY_HEADERS=true` when a proxy or load balancer sits in front (so rate limits key on the real client, not the proxy); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`
