@@ -1,11 +1,33 @@
-"""App-level wiring in app/main.py: health check, security headers, docs."""
+"""App-level wiring in app/main.py: root, health check, security headers, docs."""
 
 from unittest.mock import MagicMock
 
 from sqlalchemy.exc import OperationalError
 
+import app.main as main_module
 from app.dependencies import get_db
 from app.main import app, docs_settings
+
+
+def test_root_describes_the_service(client, monkeypatch):
+    # Open to anyone, and needs no database: it is what a person sees when
+    # they paste the service's address into a browser.
+    monkeypatch.delenv("APP_URL", raising=False)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {"service": app.title, "health": "/health", "docs": "/docs"}
+
+
+def test_root_links_to_the_frontend_when_app_url_is_set(client, monkeypatch):
+    monkeypatch.setenv("APP_URL", "https://tickets.example.com/")
+    assert client.get("/").json()["app"] == "https://tickets.example.com"
+
+
+def test_root_does_not_advertise_docs_in_production(client, monkeypatch):
+    # The docs routes are absent in production, so pointing at them would
+    # send people to a 404.
+    monkeypatch.setattr(main_module, "APP_ENV", "production")
+    assert "docs" not in client.get("/").json()
 
 
 def test_health_ok(client):
