@@ -279,6 +279,12 @@ def update_ticket(
     # limited to status and assignment.
     if "priority" in changes and changes["priority"] != ticket.priority:
         record_change(db, ticket, current_user, "priority", f"P{ticket.priority}", f"P{changes['priority']}")
+        # Re-triage moves the SLA target. The clock still starts at creation,
+        # so this is the same rule create_ticket applies — an old ticket
+        # escalated to P1 can be overdue immediately, which is the point.
+        ticket.due_date = ticket.created_at + datetime.timedelta(
+            hours=models.SLA_HOURS[changes["priority"]]
+        )
     if "title" in changes and changes["title"] != ticket.title:
         record_change(db, ticket, current_user, "title", ticket.title, changes["title"])
     if "description" in changes and changes["description"] != ticket.description:

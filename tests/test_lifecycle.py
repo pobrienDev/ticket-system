@@ -166,6 +166,56 @@ def test_higher_priority_means_sooner_due_date(authed_client):
     assert datetime.datetime.fromisoformat(p1["due_date"]) < datetime.datetime.fromisoformat(p5["due_date"])
 
 
+@pytest.mark.parametrize("new_priority", [1, 5])
+def test_changing_priority_recomputes_due_date(authed_client, new_priority):
+    # Re-triage moves the target: an escalated ticket is due sooner, a
+    # downgraded one later. The SLA clock still starts at creation, so the
+    # rule is the same one create uses: created_at + the priority's hours.
+    made = create_ticket(authed_client, priority=3)
+
+    updated = authed_client.patch(f"/tickets/{made['id']}", json={"priority": new_priority}).json()
+
+    due = datetime.datetime.fromisoformat(updated["due_date"])
+    created = datetime.datetime.fromisoformat(updated["created_at"])
+    assert updated["priority"] == new_priority
+    assert due - created == datetime.timedelta(hours=models.SLA_HOURS[new_priority])
+
+
+def test_escalation_is_visible_to_the_next_reader(authed_client):
+    # The new due date is stored, not just echoed in the PATCH response.
+    made = create_ticket(authed_client, priority=5)
+    authed_client.patch(f"/tickets/{made['id']}", json={"priority": 1})
+
+    fetched = authed_client.get(f"/tickets/{made['id']}").json()
+
+    assert datetime.datetime.fromisoformat(fetched["due_date"]) < datetime.datetime.fromisoformat(made["due_date"])
+
+
+def test_editing_other_fields_leaves_due_date_alone(authed_client):
+    made = create_ticket(authed_client, priority=2)
+
+    updated = authed_client.patch(
+        f"/tickets/{made['id']}", json={"title": "Reworded", "status": "open"}
+    ).json()
+
+    assert updated["due_date"] == made["due_date"]
+
+
+def test_resending_the_same_priority_leaves_due_date_alone(authed_client, db):
+    # A PATCH that doesn't actually change the priority is a no-op for the
+    # SLA too, so it can't silently undo a due date that was set another way.
+    made = create_ticket(authed_client, priority=2)
+    custom = datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc)
+    db.get(models.Ticket, made["id"]).due_date = custom
+    db.commit()
+
+    updated = authed_client.patch(
+        f"/tickets/{made['id']}", json={"priority": 2, "title": "Same P2"}
+    ).json()
+
+    assert datetime.datetime.fromisoformat(updated["due_date"]) == custom
+
+
 # --- Audit of non-status fields --------------------------------------------
 
 
