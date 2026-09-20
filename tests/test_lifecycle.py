@@ -188,7 +188,8 @@ def test_escalation_is_visible_to_the_next_reader(authed_client):
 
     fetched = authed_client.get(f"/tickets/{made['id']}").json()
 
-    assert datetime.datetime.fromisoformat(fetched["due_date"]) < datetime.datetime.fromisoformat(made["due_date"])
+    new_due = datetime.datetime.fromisoformat(fetched["due_date"])
+    assert new_due < datetime.datetime.fromisoformat(made["due_date"])
 
 
 def test_editing_other_fields_leaves_due_date_alone(authed_client):
