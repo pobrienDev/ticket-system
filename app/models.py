@@ -149,7 +149,8 @@ class Ticket(Base):
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
-    due_date = Column(UTCDateTime, nullable=True)  # SLA target, derived from priority on create
+    # SLA target: created_at + SLA_HOURS[priority], restamped when priority changes.
+    due_date = Column(UTCDateTime, nullable=True)
     resolved_at = Column(UTCDateTime, nullable=True)  # set on entering resolved, cleared on reopen
     created_at = Column(UTCDateTime, default=utcnow, nullable=False)
     updated_at = Column(UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False)
