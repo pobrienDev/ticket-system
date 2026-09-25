@@ -3,7 +3,7 @@
 # pin, run the tests, commit both together.
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
-sqlalchemy==2.0.53
+sqlalchemy==2.0.54
 alembic==1.20.0
 pydantic[email]==2.13.5
 python-dotenv==1.2.3
@@ -15,4 +15,4 @@ slowapi==0.1.10
 psycopg2-binary==2.9.13
 pytest==9.1.1
 pytest-cov==7.1.0
-ruff==0.16.7
+ruff==0.16.8
