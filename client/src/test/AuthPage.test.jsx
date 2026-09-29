@@ -181,3 +181,24 @@ describe('submission state', () => {
     expect(screen.getByLabelText('Password')).toBeRequired()
   })
 })
+
+// --- Server status notice ---------------------------------------------------
+
+describe('server status notice', () => {
+  it('shows nothing when the server is fine', () => {
+    render(<AuthPage onAuthed={vi.fn()} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('explains that the server is waking up', () => {
+    render(<AuthPage onAuthed={vi.fn()} serverState="waking" />)
+    expect(screen.getByRole('status')).toHaveTextContent(/Waking up the server/)
+    // The form stays usable: the server may answer before the ping does.
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled()
+  })
+
+  it('says so when the server is unreachable', () => {
+    render(<AuthPage onAuthed={vi.fn()} serverState="unreachable" />)
+    expect(screen.getByRole('status')).toHaveTextContent(/isn't responding/)
+  })
+})

@@ -3,8 +3,8 @@
 // screens are replaced with stubs so these tests cover App's own logic —
 // the state machine, token clearing, retry, and the global 401 handler —
 // and nothing else.
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const user = { id: 1, email: 'joyce@example.com', is_admin: false }
 
@@ -18,7 +18,7 @@ vi.mock('../api', () => ({
       this.status = status
     }
   },
-  api: { me: vi.fn() },
+  api: { me: vi.fn(), health: vi.fn() },
   getToken: vi.fn(() => storedToken),
   setToken: vi.fn((t) => {
     storedToken = t
@@ -28,10 +28,13 @@ vi.mock('../api', () => ({
 
 // Stub the screens: each renders a marker plus the one callback App wires.
 vi.mock('../components/AuthPage', () => ({
-  default: ({ onAuthed }) => (
-    <button type="button" onClick={() => onAuthed(user)}>
-      stub-auth-page
-    </button>
+  default: ({ onAuthed, serverState }) => (
+    <div>
+      <button type="button" onClick={() => onAuthed(user)}>
+        stub-auth-page
+      </button>
+      <span>server:{serverState}</span>
+    </div>
   ),
 }))
 vi.mock('../components/Dashboard', () => ({
@@ -45,7 +48,7 @@ vi.mock('../components/Dashboard', () => ({
   ),
 }))
 
-import App from '../App'
+import App, { BOOT_ATTEMPTS, BOOT_RETRY_MS } from '../App'
 import { ApiError, api, setToken, setUnauthorizedHandler } from '../api'
 
 function deferred() {
@@ -61,7 +64,17 @@ beforeEach(() => {
   vi.clearAllMocks()
   storedToken = null
   api.me.mockResolvedValue(user)
+  api.health.mockResolvedValue({ status: 'ok' })
 })
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+// With fake timers, let pending promises and zero-delay timers settle.
+const flush = () => act(() => vi.advanceTimersByTimeAsync(0))
+// Advance past one retry delay and let the next attempt run.
+const nextAttempt = () => act(() => vi.advanceTimersByTimeAsync(BOOT_RETRY_MS))
 
 // --- The four screens -------------------------------------------------------
 
@@ -100,31 +113,100 @@ describe('bootstrap', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
-  it('keeps the token and offers retry when the server is unreachable', async () => {
+  it('retries on its own while the server wakes, then offers a manual retry', async () => {
     // A network failure is not a bad token. Distinguishing the two is the
     // point: the user should not be logged out because the API was down.
+    // And a sleeping host is the common case, so the first failures are
+    // retried quietly with a status line instead of an error.
+    vi.useFakeTimers()
     storedToken = 'tok-1'
-    api.me.mockRejectedValueOnce(new Error('Failed to fetch'))
+    api.me.mockRejectedValue(new Error('Failed to fetch'))
     render(<App />)
+    await flush()
 
-    expect(await screen.findByText(/Couldn't reach the API server/)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(`attempt 2 of ${BOOT_ATTEMPTS}`)
+    expect(screen.queryByText(/Couldn't reach/)).not.toBeInTheDocument()
+
+    for (let n = 2; n <= BOOT_ATTEMPTS; n += 1) await nextAttempt()
+
+    expect(api.me).toHaveBeenCalledTimes(BOOT_ATTEMPTS)
+    expect(screen.getByText(/Couldn't reach the API server/)).toBeInTheDocument()
     expect(screen.getByText(/Failed to fetch/)).toBeInTheDocument()
     expect(setToken).not.toHaveBeenCalledWith(null)
 
-    // Retry re-validates the same token; once the server answers, the
-    // dashboard renders without a fresh login.
+    // Manual retry re-validates the same token; once the server answers,
+    // the dashboard renders without a fresh login.
+    api.me.mockResolvedValue(user)
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('stub-dashboard:joyce@example.com')).toBeInTheDocument()
-    expect(api.me).toHaveBeenCalledTimes(2)
+    await flush()
+    expect(screen.getByText('stub-dashboard:joyce@example.com')).toBeInTheDocument()
+    expect(api.me).toHaveBeenCalledTimes(BOOT_ATTEMPTS + 1)
+  })
+
+  it('lands on the dashboard by itself once a later attempt succeeds', async () => {
+    vi.useFakeTimers()
+    storedToken = 'tok-1'
+    api.me
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+      .mockResolvedValue(user)
+    render(<App />)
+    await flush()
+    await nextAttempt()
+    await nextAttempt()
+
+    expect(screen.getByText('stub-dashboard:joyce@example.com')).toBeInTheDocument()
+    expect(api.me).toHaveBeenCalledTimes(3)
+    expect(screen.queryByText(/Couldn't reach/)).not.toBeInTheDocument()
   })
 
   it('treats a non-401 API error like an outage, not a dead token', async () => {
+    vi.useFakeTimers()
     storedToken = 'tok-1'
     api.me.mockRejectedValue(new ApiError('Database unavailable', 503))
     render(<App />)
+    await flush()
+    for (let n = 2; n <= BOOT_ATTEMPTS; n += 1) await nextAttempt()
 
-    expect(await screen.findByText(/Couldn't reach the API server/)).toBeInTheDocument()
+    expect(screen.getByText(/Couldn't reach the API server/)).toBeInTheDocument()
     expect(setToken).not.toHaveBeenCalledWith(null)
+  })
+})
+
+// --- Warming the server up --------------------------------------------------
+
+describe('warm-up ping', () => {
+  it('pings /health on every visit, even without a token', async () => {
+    render(<App />)
+    await act(async () => {})
+    expect(api.health).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('server:ok')).toBeInTheDocument()
+  })
+
+  it('tells the login page the server is waking, then that it is back', async () => {
+    vi.useFakeTimers()
+    api.health.mockRejectedValueOnce(new Error('Failed to fetch')).mockResolvedValue({ status: 'ok' })
+    render(<App />)
+    await flush()
+    expect(screen.getByText('server:waking')).toBeInTheDocument()
+
+    await nextAttempt()
+    expect(screen.getByText('server:ok')).toBeInTheDocument()
+    expect(api.health).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports the server unreachable once the attempts are used up', async () => {
+    vi.useFakeTimers()
+    api.health.mockRejectedValue(new Error('Failed to fetch'))
+    render(<App />)
+    await flush()
+    for (let n = 2; n <= BOOT_ATTEMPTS; n += 1) await nextAttempt()
+
+    expect(screen.getByText('server:unreachable')).toBeInTheDocument()
+    expect(api.health).toHaveBeenCalledTimes(BOOT_ATTEMPTS)
+    // And it stops: no further attempts after the last one.
+    await nextAttempt()
+    expect(api.health).toHaveBeenCalledTimes(BOOT_ATTEMPTS)
   })
 })
 
