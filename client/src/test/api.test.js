@@ -2,7 +2,15 @@
 // pin the contract between components and the API — headers, encodings,
 // endpoint paths, error shaping, and the 401 rule — without a server.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api, getToken, setToken, setUnauthorizedHandler } from '../api'
+import {
+  ApiError,
+  REQUEST_TIMEOUT_MS,
+  UNREACHABLE_MESSAGE,
+  api,
+  getToken,
+  setToken,
+  setUnauthorizedHandler,
+} from '../api'
 
 function jsonResponse(body, status = 200) {
   return {
@@ -25,6 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
   setUnauthorizedHandler(null)
 })
 
@@ -209,5 +218,53 @@ describe('query building', () => {
     fetch.mockResolvedValue(jsonResponse({ items: [], total: 0 }))
     await api.listTickets()
     expect(lastRequest()[0]).toBe('/tickets')
+  })
+})
+
+// --- An unresponsive server -------------------------------------------------
+
+describe('unresponsive server', () => {
+  // A fetch that never settles on its own and only rejects when aborted —
+  // what a held-open connection to a sleeping host looks like.
+  function hangUntilAborted(_url, { signal }) {
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })
+  }
+
+  it('gives up after the timeout with a no-response error', async () => {
+    vi.useFakeTimers()
+    fetch.mockImplementation(hangUntilAborted)
+    const outcome = expect(api.me()).rejects.toMatchObject({ status: 0, message: UNREACHABLE_MESSAGE })
+    const [, options] = lastRequest()
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 1)
+    expect(options.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(options.signal.aborted).toBe(true)
+    await outcome
+  })
+
+  it('reports a refused connection the same way', async () => {
+    fetch.mockRejectedValue(new TypeError('Failed to fetch'))
+    const err = await api.listTickets().catch((e) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(0)
+    expect(err.message).toBe(UNREACHABLE_MESSAGE)
+  })
+
+  it('never treats a no-response as a sign-out', async () => {
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    fetch.mockRejectedValue(new TypeError('Failed to fetch'))
+    await api.listTickets().catch(() => {})
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('exposes the health check so the app can warm the server up', async () => {
+    fetch.mockResolvedValue(jsonResponse({ status: 'ok' }))
+    await expect(api.health()).resolves.toEqual({ status: 'ok' })
+    expect(lastRequest()[0]).toBe('/health')
   })
 })

@@ -3,7 +3,15 @@ import { api, setToken } from '../api'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
 
-function AuthPage({ onAuthed }) {
+// What the form says about the server while a visitor has no session. App
+// owns the probing; this only renders the result, so a sleeping host reads
+// as "waking up" rather than as a login that inexplicably hangs.
+const SERVER_NOTICES = {
+  waking: 'Waking up the server — this can take a minute or two. You can sign in once it responds.',
+  unreachable: "The server isn't responding. Please try again in a minute.",
+}
+
+function AuthPage({ onAuthed, serverState = 'ok' }) {
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -63,6 +71,11 @@ function AuthPage({ onAuthed }) {
           />
         </label>
 
+        {SERVER_NOTICES[serverState] && (
+          <p className="auth-card__notice" role="status">
+            {SERVER_NOTICES[serverState]}
+          </p>
+        )}
         {error && <p className="auth-card__error">{error}</p>}
 
         <button className="btn btn--primary btn--block" type="submit" disabled={submitting}>

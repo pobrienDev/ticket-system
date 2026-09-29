@@ -4,7 +4,7 @@ A full-stack helpdesk ticket tracker: **FastAPI + PostgreSQL** backend, **React 
 
 Built from real helpdesk domain experience: an enforced status lifecycle, assignment, priority triage with SLA due dates, comments, and a full audit trail — the things a real ticket system actually needs.
 
-**Live:** https://ticket-system-azure-omega.vercel.app — register an account to try it. It runs on free tiers that sleep when idle, so the first request after a quiet spell can take up to a minute while the API wakes; after that it is fast.
+**Live:** https://ticket-system-azure-omega.vercel.app — register an account to try it. It runs on free tiers that sleep when idle, so after a quiet spell the API can take a minute or two to wake. The page says so while it waits and signs you in by itself once the server answers; after that it is fast.
 
 ## Demo
 
@@ -119,13 +119,13 @@ pytest --cov=app     # 176 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
-npm test             # 128 frontend tests (vitest + Testing Library)
+npm test             # 139 frontend tests (vitest + Testing Library)
 npm run lint         # oxlint
 ```
 
 Backend tests cover: registration/login flows (duplicate and case-variant emails, the bcrypt length cap, identical error responses for unknown-user vs wrong-password, expired tokens, immediate 401 for a deleted user's still-valid token); token-derived ownership (a client cannot claim another owner or author); visibility scoping (strangers get 404 on every read and write path, a user's list is exactly owned + assigned tickets, filters can never widen scope, unassigning revokes access); the full status lifecycle (every one of the 20 status pairs checked against the transition map, same-status no-ops, `resolved_at` stamped on resolve / kept on close / cleared on reopen); SLA due dates for every priority; list filters, all sort orders, pagination, and query-parameter validation; partial updates (only sent fields change, explicit nulls rejected, empty bodies 400); input validation (length caps, blank titles/comments/names rejected and values trimmed); audit entries for every changed field including clipping and category names; comment ordering; cascade deletion of comments and audit rows; queue stats (zero-filled empty state, the unresolved qualifier, overdue detection, exact average resolution time); admin-only routes returning 403; and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
 
-Frontend tests cover: API error mapping and 401 sign-out handling, the transition map staying consistent with the status list, overdue logic, login/register flows, debounced search, queue scope chips, stats tiles, and pagination.
+Frontend tests cover: API error mapping and 401 sign-out handling, the request timeout and the cold-start retry loop (a sleeping server is retried with a status line, then offered a manual retry), the transition map staying consistent with the status list, overdue logic, login/register flows, debounced search, queue scope chips, stats tiles, and pagination.
 
 Backend tests run on SQLite locally and on PostgreSQL 16 in CI (`TEST_DATABASE_URL`).
 

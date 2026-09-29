@@ -147,6 +147,14 @@
   font-size: 0.9rem;
 }
 
+.auth-card__notice {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 10px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+}
+
 /* Forms and fields */
 
 .ticket-form {

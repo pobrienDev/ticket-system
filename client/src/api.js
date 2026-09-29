@@ -9,6 +9,18 @@ const TOKEN_KEY = 'ticket_token'
 // build time and add that frontend origin to the backend's CORS_ORIGINS.
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
+// How long a single request may take before it is abandoned. Free-tier hosts
+// hold a connection open while a sleeping instance starts, which can be
+// minutes; without a limit the browser waits silently and the UI just spins.
+// Abandoning early turns that wait into an error the screens can explain
+// and retry (see App's bootstrap), which is far better than a blank spinner.
+export const REQUEST_TIMEOUT_MS = 15_000
+
+// Message for a request that never got an answer — timed out or refused.
+// status 0 marks it as "no response" rather than an HTTP error.
+export const UNREACHABLE_MESSAGE =
+  'The server is not responding. It may be waking up from sleep, which can take a minute or two.'
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -62,7 +74,18 @@ async function request(path, { method = 'GET', body, form } = {}) {
     payload = JSON.stringify(body)
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload, signal: controller.signal })
+  } catch {
+    // Timed out (aborted) or never connected. Either way there is no HTTP
+    // status, and the distinction does not change what the user can do.
+    throw new ApiError(UNREACHABLE_MESSAGE, 0)
+  } finally {
+    clearTimeout(timer)
+  }
   if (res.status === 401 && !path.startsWith('/auth/') && unauthorizedHandler) {
     unauthorizedHandler()
   }
@@ -77,6 +100,8 @@ export const api = {
   // OAuth2 password flow: FastAPI expects form-encoded username/password
   login: (email, password) => request('/auth/login', { method: 'POST', form: { username: email, password } }),
   me: () => request('/users/me'),
+  // Touches the database too, so a successful call means the whole stack is awake.
+  health: () => request('/health'),
   listUsers: () => request('/users'),
   listCategories: () => request('/categories'),
   listTickets: (filters = {}) => {
