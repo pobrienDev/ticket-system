@@ -88,6 +88,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tickets_status'), table_name='tickets')
     op.drop_index(op.f('ix_tickets_assignee_id'), table_name='tickets')
     op.drop_table('tickets')
+    # create_table made the Postgres enum type implicitly, but drop_table does
+    # not remove it, so a downgrade-then-upgrade failed on "already exists".
+    # No-op on SQLite, which stores the enum as a plain string.
+    sa.Enum(name='ticketstatus').drop(op.get_bind(), checkfirst=True)
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_table('users')
     op.drop_table('categories')

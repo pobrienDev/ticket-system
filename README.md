@@ -46,16 +46,16 @@ docker compose up --build
 docker compose exec api python -m app.seed --demo   # first run: demo data
 ```
 
-UI at http://localhost:5173, API at http://localhost:8000. Compose seeds an admin login (`admin@example.com` / `admin123` — change it in `docker-compose.yml`).
+UI at http://localhost:5173, API at http://localhost:8000. Compose runs the migrations but no seed: the `exec ... app.seed` line above is what creates the categories and the admin login (`admin@example.com` / `admin123`, from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` defaults in `docker-compose.yml`), and `--demo` adds the demo users and tickets. Until it has run there is no admin and the category list is empty.
 
-**Or manually** — requires Python 3.12+ and Node 20+.
+**Or manually** — requires Python 3.12+ and Node 22.12+ (the test toolchain, vitest and jsdom, does not run on Node 20).
 
 **Backend:**
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate        # Windows (use `source .venv/bin/activate` on macOS/Linux)
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime deps plus pytest and ruff
 copy .env.example .env        # then set JWT_SECRET (see comment in the file)
 alembic upgrade head
 python -m app.seed            # seeds categories; admin user if ADMIN_EMAIL/ADMIN_PASSWORD set
@@ -110,20 +110,20 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 
 Non-admins only see tickets they own or are assigned to — list, detail, audit, and comments are all scoped, and out-of-scope IDs return 404, not 403, so ticket IDs can't be probed.
 
-Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, password 8 characters to 72 bytes — bcrypt's limit), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
+Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, search term 200, password 8 characters to 72 bytes — bcrypt's limit), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
 
 ## Testing
 
 ```bash
-pytest --cov=app     # 176 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 192 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client
-npm test             # 139 frontend tests (vitest + Testing Library)
+npm test             # 141 frontend tests (vitest + Testing Library)
 npm run lint         # oxlint
 ```
 
-Backend tests cover: registration/login flows (duplicate and case-variant emails, the bcrypt length cap, identical error responses for unknown-user vs wrong-password, expired tokens, immediate 401 for a deleted user's still-valid token); token-derived ownership (a client cannot claim another owner or author); visibility scoping (strangers get 404 on every read and write path, a user's list is exactly owned + assigned tickets, filters can never widen scope, unassigning revokes access); the full status lifecycle (every one of the 20 status pairs checked against the transition map, same-status no-ops, `resolved_at` stamped on resolve / kept on close / cleared on reopen); SLA due dates for every priority; list filters, all sort orders, pagination, and query-parameter validation; partial updates (only sent fields change, explicit nulls rejected, empty bodies 400); input validation (length caps, blank titles/comments/names rejected and values trimmed); audit entries for every changed field including clipping and category names; comment ordering; cascade deletion of comments and audit rows; queue stats (zero-filled empty state, the unresolved qualifier, overdue detection, exact average resolution time); admin-only routes returning 403; and email failures never breaking assignment (the email API is mocked — the suite makes no network calls).
+Backend tests cover: registration/login flows (duplicate and case-variant emails, the bcrypt length cap, identical error responses and an identical bcrypt check for unknown-user vs wrong-password, expired tokens, immediate 401 for a deleted user's still-valid token); token-derived ownership (a client cannot claim another owner or author); visibility scoping (strangers get 404 on every read and write path, a user's list is exactly owned + assigned tickets, filters can never widen scope, unassigning revokes access); the full status lifecycle (every one of the 20 status pairs checked against the transition map, same-status no-ops, `resolved_at` stamped on resolve / kept on close / cleared on reopen); SLA due dates for every priority; list filters, all sort orders, pagination, and query-parameter validation; partial updates (only sent fields change, explicit nulls rejected, empty bodies 400); input validation (length caps, blank titles/comments/names rejected and values trimmed); audit entries for every changed field including clipping and category names; comment ordering; cascade deletion of comments and audit rows; queue stats (zero-filled empty state, the unresolved qualifier, overdue detection, exact average resolution time); admin-only routes returning 403; email failures never breaking assignment (the email API is mocked — the suite makes no network calls); and the seed script (categories, admin creation, idempotency, and demo logins working with the default password when `DEMO_PASSWORD` is left blank).
 
 Frontend tests cover: API error mapping and 401 sign-out handling, the request timeout and the cold-start retry loop (a sleeping server is retried with a status line, then offered a manual retry), the transition map staying consistent with the status list, overdue logic, login/register flows, debounced search, queue scope chips, stats tiles, and pagination.
 
@@ -137,16 +137,16 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 `.github/workflows/ci.yml` runs on every push and PR:
 
-1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), then pytest with the coverage gate
+1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), an inspection of the migrated schema for the enum values and CHECK constraint that `alembic check` doesn't compare, and a `downgrade base` / `upgrade head` round trip, then pytest with the coverage gate
 2. **frontend** — oxlint + vitest + production build of the client
 3. **image** — builds the Dockerfile and boots the app inside the image, so a Dockerfile change or base-image bump is tested, not just linted
-4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
+4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret) with the commit that just passed as `ref`, so a later push can't be built in its place; deploys are serialised by a concurrency group
 
 `.github/dependabot.yml` opens weekly PRs for pip, npm, the Docker base image digest, and Actions versions — the counterpart to everything being pinned. Minor and patch bumps arrive grouped; majors come one at a time.
 
 ## Deployment
 
-The live instance runs the API on Render (built from the `Dockerfile`, Virginia), PostgreSQL 16 on Neon (same AWS region, direct endpoint), and the client on Vercel. Render's auto-deploy is off on purpose: the CI `deploy` job is the only thing that ships, so nothing reaches production without passing the test, frontend, and image jobs.
+The live instance runs the API on Render (built from the `Dockerfile`, Virginia), PostgreSQL 16 on Neon (same AWS region, direct endpoint), and the client on Vercel. Render's auto-deploy is off on purpose: the CI `deploy` job is the only thing that ships, and it names the exact commit that passed, so nothing reaches production without passing the test, frontend, and image jobs.
 
 - **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot, runs as a non-root user, and carries a `HEALTHCHECK` against `/health`): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, `APP_ENV=production` (disables the public API docs), and `TRUST_PROXY_HEADERS=true` when a proxy or load balancer sits in front (so rate limits key on the real client, not the proxy); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`

@@ -1,10 +1,12 @@
 """App-level wiring in app/main.py: root, health check, security headers, docs."""
 
+import os
 from unittest.mock import MagicMock
 
 from sqlalchemy.exc import OperationalError
 
 import app.main as main_module
+from app import auth
 from app.dependencies import get_db
 from app.main import app, docs_settings
 
@@ -63,8 +65,20 @@ def test_security_headers_on_every_response(client):
         assert response.headers["Referrer-Policy"] == "same-origin"
 
 
+def test_suite_pins_its_environment():
+    # conftest sets these before the app is imported. A developer's .env
+    # (APP_URL for email links, APP_ENV=production, another token lifetime)
+    # must never change what the suite asserts; this fails loudly if a pin
+    # is removed.
+    assert os.environ["APP_ENV"] == "development"
+    assert os.environ["APP_URL"] == ""
+    assert os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] == "60"
+    assert main_module.APP_ENV == "development"
+    assert auth.ACCESS_TOKEN_EXPIRE_MINUTES == 60
+
+
 def test_docs_available_in_development(client):
-    # The suite runs with the default APP_ENV (development).
+    # conftest pins APP_ENV=development for the whole suite.
     assert client.get("/docs").status_code == 200
     assert client.get("/openapi.json").status_code == 200
 

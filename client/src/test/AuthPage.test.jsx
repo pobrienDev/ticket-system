@@ -138,6 +138,17 @@ describe('switching modes', () => {
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
   })
 
+  it('applies the password minimum only when registering', async () => {
+    // The 8-character rule belongs to signup; on sign-in it would stop an
+    // account created before the rule from logging in at all.
+    render(<AuthPage onAuthed={vi.fn()} />)
+    const password = screen.getByLabelText('Password')
+    expect(password).not.toHaveAttribute('minlength')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Need an account? Register' }))
+    expect(password).toHaveAttribute('minlength', '8')
+  })
+
   it('clears a previous error when the mode changes', async () => {
     // A stale "wrong password" message under a fresh registration form
     // would be confusing; switching modes resets it.
@@ -171,14 +182,17 @@ describe('submission state', () => {
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeEnabled()
   })
 
-  it('declares the browser-side constraints the API also enforces', () => {
+  it('declares the browser-side constraints the API also enforces', async () => {
     // required + minLength give instant feedback; the server still
-    // validates (8–72 characters, valid email) regardless.
+    // validates (8–72 characters, valid email) regardless. The length rule
+    // is a signup constraint, so it is asserted in register mode.
     render(<AuthPage onAuthed={() => {}} />)
     expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'email')
     expect(screen.getByLabelText('Email')).toBeRequired()
-    expect(screen.getByLabelText('Password')).toHaveAttribute('minlength', '8')
     expect(screen.getByLabelText('Password')).toBeRequired()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Need an account? Register' }))
+    expect(screen.getByLabelText('Password')).toHaveAttribute('minlength', '8')
   })
 })
 

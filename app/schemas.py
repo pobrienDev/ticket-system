@@ -33,6 +33,7 @@ DESCRIPTION_MAX = 10_000
 COMMENT_MAX = 5_000
 CATEGORY_NAME_MAX = 100
 PASSWORD_MIN = 8
+SEARCH_MAX = 200  # the list endpoint's q=; bounds the cost of an ILIKE scan
 
 
 def _strip_non_blank(value: str) -> str:

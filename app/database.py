@@ -16,7 +16,7 @@ load_dotenv()
 
 # SQLite by default for local development; set DATABASE_URL to a
 # postgresql:// URL in .env (or the host's environment) for production.
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./ticket_system.db")
+DATABASE_URL = os.environ.get("DATABASE_URL") or "sqlite:///./ticket_system.db"
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 engine = create_engine(

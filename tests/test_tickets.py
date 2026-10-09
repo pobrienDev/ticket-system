@@ -6,9 +6,13 @@ Lifecycle rules (transition map, resolved_at) live in test_lifecycle.py;
 visibility scoping between users lives in test_visibility.py.
 """
 
-import pytest
+import datetime
 
-from app import models
+import pytest
+from sqlalchemy import event
+
+from app import models, schemas
+from tests.conftest import engine
 
 
 def create_ticket(client, **overrides):
@@ -124,6 +128,26 @@ def test_list_tickets_search(authed_client):
     assert body["items"][0]["title"] == "Monitor flickers"
 
 
+def test_search_matches_wildcard_characters_literally(authed_client):
+    # % and _ are LIKE wildcards; typed by a person they are just characters.
+    create_ticket(authed_client, title="CPU at 100% on the file server")
+    create_ticket(authed_client, title="Rename file_name.txt fails")
+    create_ticket(authed_client, title="Rename filename.txt fails")
+
+    def titles(q):
+        return [t["title"] for t in authed_client.get("/tickets", params={"q": q}).json()["items"]]
+
+    assert titles("100%") == ["CPU at 100% on the file server"]
+    assert titles("file_name") == ["Rename file_name.txt fails"]
+    assert titles("%") == ["CPU at 100% on the file server"]  # not "everything"
+
+
+def test_search_term_has_a_length_cap(authed_client):
+    at_cap = "x" * schemas.SEARCH_MAX
+    assert authed_client.get("/tickets", params={"q": at_cap}).status_code == 200
+    assert authed_client.get("/tickets", params={"q": at_cap + "x"}).status_code == 422
+
+
 # --- List: sorting and pagination ------------------------------------------
 
 
@@ -134,6 +158,7 @@ def test_list_tickets_search(authed_client):
         ("-priority", ["Low", "Medium", "Critical"]),
         ("created_at", ["Low", "Critical", "Medium"]),  # creation order
         ("-created_at", ["Medium", "Critical", "Low"]),  # the default: newest first
+        ("due_date", ["Critical", "Medium", "Low"]),  # SLA: a P1 is due soonest
     ],
 )
 def test_list_tickets_sort_orders(authed_client, sort, expected):
@@ -145,6 +170,19 @@ def test_list_tickets_sort_orders(authed_client, sort, expected):
     response = authed_client.get("/tickets", params={"sort": sort})
     assert response.status_code == 200
     assert [t["title"] for t in response.json()["items"]] == expected
+
+
+def test_due_date_sort_puts_tickets_without_a_due_date_last(authed_client, db):
+    # Tickets created before due dates existed have none. SQLite sorts NULL
+    # first and Postgres last, so the placement is pinned rather than left
+    # to the engine.
+    create_ticket(authed_client, title="Legacy", priority=5)
+    create_ticket(authed_client, title="Soon", priority=1)
+    db.query(models.Ticket).filter(models.Ticket.title == "Legacy").update({"due_date": None})
+    db.commit()
+
+    response = authed_client.get("/tickets", params={"sort": "due_date"})
+    assert [t["title"] for t in response.json()["items"]] == ["Soon", "Legacy"]
 
 
 def test_list_tickets_default_sort_is_newest_first(authed_client):
@@ -213,6 +251,33 @@ def test_patch_updates_only_sent_fields(authed_client):
     assert body["priority"] == 1
     assert body["title"] == "Original title"
     assert body["description"] == made["description"]
+
+
+def test_patch_locks_the_ticket_row(authed_client):
+    # Two agents editing at once must serialize on the row, or both pass the
+    # transition check against the same stale status and the audit log
+    # records an old_value that was no longer current. Capture the SQL the
+    # PATCH runs: on Postgres the ticket is read FOR UPDATE. SQLite has no
+    # row locks and drops the clause, which is why the assertion is by
+    # dialect rather than skipped.
+    made = create_ticket(authed_client)
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        response = authed_client.patch(f"/tickets/{made['id']}", json={"status": "open"})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+
+    locking = [s for s in statements if "FOR UPDATE" in s]
+    if engine.dialect.name == "postgresql":
+        assert any("FROM tickets" in s for s in locking), statements
+    else:
+        assert not locking
 
 
 def test_patch_explicit_null_rejected_for_required_fields(authed_client):
@@ -312,6 +377,24 @@ def test_delete_cascades_to_comments_and_audit(authed_client, admin_client, db):
 
 
 # --- Audit log --------------------------------------------------------------
+
+
+def test_audit_entries_with_equal_timestamps_keep_insertion_order(authed_client, test_user, db):
+    # Seeded history and two quick edits can stamp entries identically; the
+    # secondary sort on id keeps them in the order they happened instead of
+    # whatever order the engine feels like returning.
+    made = create_ticket(authed_client)
+    same_instant = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)
+    for old, new in (("new", "open"), ("open", "in_progress"), ("in_progress", "resolved")):
+        db.add(models.AuditLogEntry(
+            ticket_id=made["id"], actor_id=test_user.id, field="status",
+            old_value=old, new_value=new, created_at=same_instant,
+        ))
+    db.commit()
+
+    entries = authed_client.get(f"/tickets/{made['id']}/audit").json()
+    assert [e["new_value"] for e in entries] == ["open", "in_progress", "resolved"]
+    assert [e["id"] for e in entries] == sorted(e["id"] for e in entries)
 
 
 def test_status_change_creates_audit_entry(authed_client, db):

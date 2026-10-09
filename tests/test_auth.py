@@ -8,7 +8,8 @@ is mocked.
 
 import jwt
 
-from app.auth import SECRET_KEY, create_access_token
+from app.auth import DUMMY_PASSWORD_HASH, SECRET_KEY, create_access_token
+from app.routers import users as users_module
 from tests.conftest import TEST_PASSWORD
 
 # --- Registration -----------------------------------------------------------
@@ -126,6 +127,26 @@ def test_login_failures_are_indistinguishable(client, test_user):
     )
     assert wrong_password.status_code == unknown_user.status_code == 401
     assert wrong_password.json()["detail"] == unknown_user.json()["detail"]
+
+
+def test_unknown_user_login_still_costs_a_password_check(client, monkeypatch):
+    # The timing half of the same defense: a missing account must not
+    # short-circuit past bcrypt, or an unknown email answers measurably
+    # faster than a wrong password. Counting the checks is deterministic
+    # where timing a request would be flaky.
+    checked = []
+    real_verify = users_module.verify_password
+
+    def counting_verify(plain, hashed):
+        checked.append(hashed)
+        return real_verify(plain, hashed)
+
+    monkeypatch.setattr(users_module, "verify_password", counting_verify)
+    response = client.post(
+        "/auth/login", data={"username": "ghost@example.com", "password": TEST_PASSWORD}
+    )
+    assert response.status_code == 401
+    assert checked == [DUMMY_PASSWORD_HASH]
 
 
 # --- Token validation -------------------------------------------------------

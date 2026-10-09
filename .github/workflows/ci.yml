@@ -27,16 +27,42 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
       - run: ruff check .
       # Exercise the actual migration chain against Postgres (the deploy
       # artifact), and fail if models have drifted from the migrations.
+      # The test suite rebuilds its schema from the models, so this step is
+      # the only place the migrations themselves are proven.
       - name: Run and verify migrations
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:test@localhost:5432/postgres
         run: |
           alembic upgrade head
           alembic check
+          # alembic check compares columns and indexes, not Postgres enum
+          # values or CHECK constraints: a migration that forgot to add the
+          # 'new' status or the priority range check would pass it. Look at
+          # the migrated schema directly for both.
+          python - <<'EOF'
+          from sqlalchemy import CheckConstraint, create_engine, inspect, text
+          from app import models
+          from app.database import DATABASE_URL
+          with create_engine(DATABASE_URL).connect() as conn:
+              labels = conn.execute(text(
+                  "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
+                  "WHERE t.typname = 'ticketstatus' ORDER BY e.enumsortorder"
+              )).scalars().all()
+              expected = [s.value for s in models.TicketStatus]
+              assert labels == expected, f"enum values {labels} != {expected}"
+              present = {c["name"] for c in inspect(conn).get_check_constraints("tickets")}
+              wanted = {c.name for c in models.Ticket.__table__.constraints if isinstance(c, CheckConstraint)}
+              assert wanted <= present, f"missing CHECK constraints: {wanted - present}"
+          print("migrated schema ok: enum", labels, "checks", sorted(wanted))
+          EOF
+          # Every migration must undo cleanly and the chain must rebuild from
+          # nothing; a leftover enum type once broke exactly this.
+          alembic downgrade base
+          alembic upgrade head
       - run: pytest --cov=app
 
   # Frontend: lockfile-exact install, lint, unit tests, and a production
@@ -76,6 +102,11 @@ jobs:
     # create the hook in the Render dashboard and save it as the RENDER_DEPLOY_HOOK_URL secret.
     needs: [test, frontend, image]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # One deploy at a time, in order, never cancelled: two merges in quick
+    # succession each ship their own tested commit instead of racing.
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy
@@ -85,5 +116,9 @@ jobs:
           if [ -z "$DEPLOY_HOOK" ]; then
             echo "RENDER_DEPLOY_HOOK_URL secret not set; skipping deploy."
           else
-            curl -fsS -X POST "$DEPLOY_HOOK"
+            # Name the commit that passed. Without `ref`, Render builds
+            # whatever is at the head of the branch when the hook fires,
+            # which can be a later push whose checks have not finished.
+            case "$DEPLOY_HOOK" in *\?*) sep='&' ;; *) sep='?' ;; esac
+            curl -fsS -X POST "${DEPLOY_HOOK}${sep}ref=${GITHUB_SHA}"
           fi

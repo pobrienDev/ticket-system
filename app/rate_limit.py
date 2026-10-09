@@ -44,7 +44,7 @@ def client_key(request: Request) -> str:
 
 def _limit_from_env(name: str, default: str) -> str:
     """Read a limit string and prove it parses, so bad config fails at boot."""
-    value = os.environ.get(name, default)
+    value = os.environ.get(name) or default  # blank in .env counts as unset
     try:
         parse_limit(value)
     except ValueError as exc:
@@ -62,6 +62,6 @@ REGISTER_RATE_LIMIT = _limit_from_env("REGISTER_RATE_LIMIT", "5/minute")
 
 limiter = Limiter(
     key_func=client_key,
-    storage_uri=os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://"),
+    storage_uri=os.environ.get("RATE_LIMIT_STORAGE_URI") or "memory://",
     enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() != "false",
 )

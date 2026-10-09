@@ -44,7 +44,7 @@ def send_email(to: str, subject: str, body: str) -> None:
     the provider's explanation included so the log entry is actionable.
     """
     api_key = os.environ.get("SENDGRID_API_KEY")
-    from_email = os.environ.get("EMAIL_FROM", "tickets@example.com")
+    from_email = os.environ.get("EMAIL_FROM") or "tickets@example.com"
 
     if not api_key:
         logger.info("SENDGRID_API_KEY not set; would send to %s: %s — %s", to, subject, body)

@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..auth import create_access_token, hash_password, verify_password
+from ..auth import DUMMY_PASSWORD_HASH, create_access_token, hash_password, verify_password
 from ..dependencies import get_current_admin, get_current_user, get_db
 from ..rate_limit import LOGIN_RATE_LIMIT, REGISTER_RATE_LIMIT, limiter
 
@@ -50,8 +50,11 @@ def login(
     # one request as a form rather than JSON.
     user = db.query(models.User).filter(models.User.email == form_data.username.lower()).first()
     # One error message for both "no such user" and "wrong password", so the
-    # endpoint can't be used to discover which emails have accounts.
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # endpoint can't be used to discover which emails have accounts — and one
+    # bcrypt check in both cases, so timing can't reveal it either: with no
+    # account, the password is checked against a dummy hash and rejected.
+    hashed = user.hashed_password if user else DUMMY_PASSWORD_HASH
+    if not verify_password(form_data.password, hashed) or user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

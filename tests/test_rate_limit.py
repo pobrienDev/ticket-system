@@ -37,6 +37,12 @@ def test_bad_limit_string_fails_at_boot(monkeypatch):
         rate_limit._limit_from_env("LOGIN_RATE_LIMIT", "10/minute")
 
 
+def test_blank_limit_string_means_the_default(monkeypatch):
+    # A .env line like LOGIN_RATE_LIMIT= arrives as "", not as a missing key.
+    monkeypatch.setenv("LOGIN_RATE_LIMIT", "")
+    assert rate_limit._limit_from_env("LOGIN_RATE_LIMIT", "10/minute") == "10/minute"
+
+
 # --- Client identity --------------------------------------------------------
 
 
@@ -83,6 +89,19 @@ def test_login_is_throttled_per_client(client, test_user, limiting_enabled):
     # Even the correct password is refused once the bucket is exhausted:
     # the limit is on attempts, which is the point of brute-force protection.
     assert response.status_code == 429
+
+
+def test_throttled_response_explains_itself(client, test_user, limiting_enabled):
+    # The frontend reads `detail` from every error body; slowapi's default
+    # handler used `error`, so a throttled login showed "Request failed
+    # (429)". Retry-After tells any client how long to back off.
+    limit = parse_limit(rate_limit.LOGIN_RATE_LIMIT)
+    for _ in range(limit.amount):
+        client.post("/auth/login", data={"username": test_user.email, "password": "wrong"})
+    response = client.post("/auth/login", data={"username": test_user.email, "password": "wrong"})
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith("Too many attempts")
+    assert response.headers["Retry-After"] == str(limit.get_expiry())
 
 
 def test_register_is_throttled_harder_than_login(client, limiting_enabled):

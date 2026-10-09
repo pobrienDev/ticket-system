@@ -35,8 +35,22 @@ SORT_OPTIONS = {
     "-priority": models.Ticket.priority.desc(),
     "created_at": models.Ticket.created_at.asc(),
     "-created_at": models.Ticket.created_at.desc(),
-    "due_date": models.Ticket.due_date.asc(),
+    # Tickets from before SLA due dates existed have none. Put them last on
+    # every engine: SQLite sorts NULL first in ASC, Postgres sorts it last.
+    "due_date": models.Ticket.due_date.asc().nulls_last(),
 }
+
+
+def contains_pattern(text: str) -> str:
+    """A LIKE pattern that matches `text` literally, anywhere in a value.
+
+    `%` and `_` are wildcards to LIKE, so a search for "100%" would match
+    "100 users" and "_" alone would match everything. Each is escaped (the
+    escape character itself first), and callers pass escape="\\" so the
+    engine honours it.
+    """
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 def visible_tickets(db: Session, user: models.User):
@@ -49,9 +63,19 @@ def visible_tickets(db: Session, user: models.User):
     return query
 
 
-def get_visible_ticket_or_404(ticket_id: int, db: Session, user: models.User) -> models.Ticket:
+def get_visible_ticket_or_404(
+    ticket_id: int, db: Session, user: models.User, for_update: bool = False
+) -> models.Ticket:
     # 404 (not 403) for tickets outside the user's scope, so IDs can't be probed.
-    ticket = visible_tickets(db, user).filter(models.Ticket.id == ticket_id).first()
+    query = visible_tickets(db, user).filter(models.Ticket.id == ticket_id)
+    if for_update:
+        # Hold the row until the transaction commits, so two edits arriving
+        # together serialize: the second one validates its transition against
+        # the first one's result and audits a true old_value, instead of both
+        # passing against the same stale snapshot. SQLite has no row locks
+        # and drops the clause; its single writer lock serializes anyway.
+        query = query.with_for_update()
+    ticket = query.first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
@@ -108,7 +132,7 @@ def list_tickets(
     category_id: int | None = None,
     assignee_id: int | None = None,
     owner_id: int | None = None,
-    q: str | None = None,
+    q: str | None = Query(default=None, max_length=schemas.SEARCH_MAX),
     sort: str = Query(default="-created_at", pattern="^(-?(priority|created_at)|due_date)$"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -125,9 +149,12 @@ def list_tickets(
     if owner_id is not None:
         query = query.filter(models.Ticket.owner_id == owner_id)
     if q:
-        needle = f"%{q}%"
+        needle = contains_pattern(q)
         query = query.filter(
-            or_(models.Ticket.title.ilike(needle), models.Ticket.description.ilike(needle))
+            or_(
+                models.Ticket.title.ilike(needle, escape="\\"),
+                models.Ticket.description.ilike(needle, escape="\\"),
+            )
         )
     total = query.count()
     items = (
@@ -221,7 +248,7 @@ def update_ticket(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    ticket = get_visible_ticket_or_404(ticket_id, db, current_user)
+    ticket = get_visible_ticket_or_404(ticket_id, db, current_user, for_update=True)
     # exclude_unset keeps only the fields the client actually sent — that is
     # what makes this a true partial update.
     changes = update.model_dump(exclude_unset=True)
@@ -338,6 +365,8 @@ def get_audit_log(
         db.query(models.AuditLogEntry)
         .options(joinedload(models.AuditLogEntry.actor))
         .filter(models.AuditLogEntry.ticket_id == ticket.id)
-        .order_by(models.AuditLogEntry.created_at)
+        # Same tiebreak as the relationship: without it, Postgres may return
+        # two entries with equal timestamps in either order.
+        .order_by(models.AuditLogEntry.created_at, models.AuditLogEntry.id)
         .all()
     )
