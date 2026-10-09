@@ -55,7 +55,7 @@ UI at http://localhost:5173, API at http://localhost:8000. Compose runs the migr
 ```bash
 python -m venv .venv
 .venv\Scripts\activate        # Windows (use `source .venv/bin/activate` on macOS/Linux)
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime deps plus pytest and ruff
 copy .env.example .env        # then set JWT_SECRET (see comment in the file)
 alembic upgrade head
 python -m app.seed            # seeds categories; admin user if ADMIN_EMAIL/ADMIN_PASSWORD set

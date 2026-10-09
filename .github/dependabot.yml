@@ -1,4 +1,4 @@
-# Everything in this repo is pinned (requirements.txt ==, package-lock.json,
+# Everything in this repo is pinned (requirements*.txt ==, package-lock.json,
 # the Dockerfile base digest, actions@vN), which means nothing updates by
 # itself. Dependabot is the other half of pinning: it proposes the bumps as
 # PRs, and CI decides whether each one is safe to merge.

@@ -1,6 +1,8 @@
-# Pinned to the versions the suite was last verified against, so a rebuild
-# next month installs the same code as today. Bump deliberately: change a
-# pin, run the tests, commit both together.
+# Runtime dependencies, pinned to the versions the suite was last verified
+# against, so a rebuild next month installs the same code as today. Bump
+# deliberately: change a pin, run the tests, commit both together.
+# Test and lint tools live in requirements-dev.txt so the production image,
+# which installs only this file, carries none of them.
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
 sqlalchemy==2.0.53
@@ -13,6 +15,3 @@ python-multipart==0.0.32
 httpx==0.28.1
 slowapi==0.1.10
 psycopg2-binary==2.9.13
-pytest==9.1.1
-pytest-cov==7.1.0
-ruff==0.16.7

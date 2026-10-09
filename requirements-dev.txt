@@ -1,0 +1,6 @@
+# Everything a development checkout or CI needs: the runtime set plus the
+# test and lint tools. The Dockerfile installs requirements.txt alone.
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.16.7
