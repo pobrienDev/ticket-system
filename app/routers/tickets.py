@@ -365,6 +365,8 @@ def get_audit_log(
         db.query(models.AuditLogEntry)
         .options(joinedload(models.AuditLogEntry.actor))
         .filter(models.AuditLogEntry.ticket_id == ticket.id)
-        .order_by(models.AuditLogEntry.created_at)
+        # Same tiebreak as the relationship: without it, Postgres may return
+        # two entries with equal timestamps in either order.
+        .order_by(models.AuditLogEntry.created_at, models.AuditLogEntry.id)
         .all()
     )

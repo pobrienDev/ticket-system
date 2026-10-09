@@ -44,6 +44,18 @@ def test_seed_is_idempotent(db):
     assert db.query(models.Ticket).count() == len(seed_module.DEMO_TICKETS)
 
 
+def test_demo_audit_history_has_distinct_timestamps_inside_the_resolution_window(db):
+    # A tie would let the history display out of order, and an entry after
+    # resolved_at would describe work on a ticket that was already done.
+    seed_module.seed(demo=True)
+    for ticket in db.query(models.Ticket).all():
+        stamps = [entry.created_at for entry in ticket.audit_log]
+        assert len(set(stamps)) == len(stamps), ticket.title
+        assert stamps == sorted(stamps), ticket.title
+        if ticket.resolved_at is not None and stamps:
+            assert stamps[-1] <= ticket.resolved_at, ticket.title
+
+
 def test_seed_creates_the_categories_and_an_admin(db, client, monkeypatch):
     monkeypatch.setenv("ADMIN_EMAIL", "Boss@Example.com")  # stored lowercased, like registration
     monkeypatch.setenv("ADMIN_PASSWORD", TEST_PASSWORD)

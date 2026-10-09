@@ -169,7 +169,9 @@ class Ticket(Base):
         "AuditLogEntry",
         back_populates="ticket",
         cascade="all, delete-orphan",
-        order_by="AuditLogEntry.created_at",
+        # id breaks timestamp ties, so two entries stamped in the same
+        # instant still read in the order they were written.
+        order_by="[AuditLogEntry.created_at, AuditLogEntry.id]",
     )
 
 

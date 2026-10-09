@@ -6,6 +6,8 @@ Lifecycle rules (transition map, resolved_at) live in test_lifecycle.py;
 visibility scoping between users lives in test_visibility.py.
 """
 
+import datetime
+
 import pytest
 from sqlalchemy import event
 
@@ -375,6 +377,24 @@ def test_delete_cascades_to_comments_and_audit(authed_client, admin_client, db):
 
 
 # --- Audit log --------------------------------------------------------------
+
+
+def test_audit_entries_with_equal_timestamps_keep_insertion_order(authed_client, test_user, db):
+    # Seeded history and two quick edits can stamp entries identically; the
+    # secondary sort on id keeps them in the order they happened instead of
+    # whatever order the engine feels like returning.
+    made = create_ticket(authed_client)
+    same_instant = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)
+    for old, new in (("new", "open"), ("open", "in_progress"), ("in_progress", "resolved")):
+        db.add(models.AuditLogEntry(
+            ticket_id=made["id"], actor_id=test_user.id, field="status",
+            old_value=old, new_value=new, created_at=same_instant,
+        ))
+    db.commit()
+
+    entries = authed_client.get(f"/tickets/{made['id']}/audit").json()
+    assert [e["new_value"] for e in entries] == ["open", "in_progress", "resolved"]
+    assert [e["id"] for e in entries] == sorted(e["id"] for e in entries)
 
 
 def test_status_change_creates_audit_entry(authed_client, db):

@@ -147,13 +147,21 @@ def seed_demo(db):
                 old_value=old, new_value=new, created_at=at,
             ))
 
+        # One entry an hour, squeezed evenly into the resolution window when
+        # that is shorter, so no two entries ever share a timestamp and the
+        # last one lands at resolved_at rather than after it.
+        path = _status_path(status)
+        events = (1 if assignee else 0) + len(path)
+        gap = datetime.timedelta(hours=1)
+        if resolved_at is not None and events:
+            gap = min(gap, (resolved_at - created) / events)
         step = created
         if assignee:
-            step += datetime.timedelta(hours=1)
+            step += gap
             log("assignee", None, assignee, step)
-        for old, new in _status_path(status):
-            step += datetime.timedelta(hours=1)
-            log("status", old, new, min(step, resolved_at or step))
+        for old, new in path:
+            step += gap
+            log("status", old, new, step)
 
         for j, (author, body) in enumerate(comments or []):
             db.add(Comment(
