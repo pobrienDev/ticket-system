@@ -51,9 +51,19 @@ def visible_tickets(db: Session, user: models.User):
     return query
 
 
-def get_visible_ticket_or_404(ticket_id: int, db: Session, user: models.User) -> models.Ticket:
+def get_visible_ticket_or_404(
+    ticket_id: int, db: Session, user: models.User, for_update: bool = False
+) -> models.Ticket:
     # 404 (not 403) for tickets outside the user's scope, so IDs can't be probed.
-    ticket = visible_tickets(db, user).filter(models.Ticket.id == ticket_id).first()
+    query = visible_tickets(db, user).filter(models.Ticket.id == ticket_id)
+    if for_update:
+        # Hold the row until the transaction commits, so two edits arriving
+        # together serialize: the second one validates its transition against
+        # the first one's result and audits a true old_value, instead of both
+        # passing against the same stale snapshot. SQLite has no row locks
+        # and drops the clause; its single writer lock serializes anyway.
+        query = query.with_for_update()
+    ticket = query.first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
@@ -223,7 +233,7 @@ def update_ticket(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    ticket = get_visible_ticket_or_404(ticket_id, db, current_user)
+    ticket = get_visible_ticket_or_404(ticket_id, db, current_user, for_update=True)
     # exclude_unset keeps only the fields the client actually sent — that is
     # what makes this a true partial update.
     changes = update.model_dump(exclude_unset=True)

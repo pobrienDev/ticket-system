@@ -7,8 +7,10 @@ visibility scoping between users lives in test_visibility.py.
 """
 
 import pytest
+from sqlalchemy import event
 
 from app import models
+from tests.conftest import engine
 
 
 def create_ticket(client, **overrides):
@@ -227,6 +229,33 @@ def test_patch_updates_only_sent_fields(authed_client):
     assert body["priority"] == 1
     assert body["title"] == "Original title"
     assert body["description"] == made["description"]
+
+
+def test_patch_locks_the_ticket_row(authed_client):
+    # Two agents editing at once must serialize on the row, or both pass the
+    # transition check against the same stale status and the audit log
+    # records an old_value that was no longer current. Capture the SQL the
+    # PATCH runs: on Postgres the ticket is read FOR UPDATE. SQLite has no
+    # row locks and drops the clause, which is why the assertion is by
+    # dialect rather than skipped.
+    made = create_ticket(authed_client)
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        response = authed_client.patch(f"/tickets/{made['id']}", json={"status": "open"})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+
+    locking = [s for s in statements if "FOR UPDATE" in s]
+    if engine.dialect.name == "postgresql":
+        assert any("FROM tickets" in s for s in locking), statements
+    else:
+        assert not locking
 
 
 def test_patch_explicit_null_rejected_for_required_fields(authed_client):
