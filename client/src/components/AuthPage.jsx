@@ -66,7 +66,9 @@ function AuthPage({ onAuthed, serverState = 'ok' }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={8}
+            // The minimum is a signup rule. Enforcing it on sign-in would
+            // lock out any account that predates it.
+            minLength={mode === 'register' ? 8 : undefined}
             required
           />
         </label>

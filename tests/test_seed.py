@@ -36,6 +36,17 @@ def test_demo_users_log_in_with_the_default_password_when_the_env_is_blank(clien
         assert response.status_code == 200, email
 
 
+@pytest.mark.parametrize("bad", ["short", "x" * 73], ids=["too-short", "over-72-bytes"])
+def test_seed_refuses_a_password_registration_would_reject(bad, monkeypatch, db):
+    # A short one creates accounts the login form cannot submit; a long one
+    # raises inside bcrypt halfway through. Both now fail first, named, and
+    # leave nothing behind.
+    monkeypatch.setenv("DEMO_PASSWORD", bad)
+    with pytest.raises(ValueError, match="DEMO_PASSWORD"):
+        seed_module.seed(demo=True)
+    assert db.query(models.User).count() == 0
+
+
 def test_seed_is_idempotent(db):
     seed_module.seed(demo=True)
     seed_module.seed(demo=True)

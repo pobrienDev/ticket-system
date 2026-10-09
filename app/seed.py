@@ -13,6 +13,9 @@ import argparse
 import datetime
 import os
 
+from pydantic import ValidationError
+
+from . import schemas
 from .auth import hash_password
 from .database import SessionLocal
 from .models import (
@@ -94,6 +97,20 @@ DEMO_TICKETS = [
 ]
 
 
+def usable_password(value: str, source: str) -> str:
+    """Hold a seed password to the same rules as registration.
+
+    Otherwise ADMIN_PASSWORD=abc creates an account the login form's own
+    minimum would never submit, and anything over bcrypt's 72 bytes raises
+    halfway through the seed. Failing first, with the reason, is kinder.
+    """
+    try:
+        return schemas.UserCreate(email="seed@example.com", password=value).password
+    except ValidationError as exc:
+        reasons = "; ".join(err["msg"] for err in exc.errors())
+        raise ValueError(f"{source} is not a usable password: {reasons}") from None
+
+
 def seed_demo(db):
     if db.query(Ticket).count() > 0:
         print("Tickets already exist; skipping demo data.")
@@ -101,7 +118,7 @@ def seed_demo(db):
 
     # `or`, not a get() default: .env.example ships DEMO_PASSWORD= and
     # load_dotenv() sets a blank value, which must still mean "use the default".
-    demo_password = os.environ.get("DEMO_PASSWORD") or "demo1234"
+    demo_password = usable_password(os.environ.get("DEMO_PASSWORD") or "demo1234", "DEMO_PASSWORD")
     users = {}
     for email, is_admin in DEMO_USERS:
         user = db.query(User).filter(User.email == email).first()
@@ -198,6 +215,7 @@ def seed(demo=False):
         admin_password = os.environ.get("ADMIN_PASSWORD")
         if admin_email and admin_password:
             admin_email = admin_email.lower()
+            admin_password = usable_password(admin_password, "ADMIN_PASSWORD")
             user = db.query(User).filter(User.email == admin_email).first()
             if user:
                 if not user.is_admin:
@@ -226,4 +244,7 @@ def seed(demo=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--demo", action="store_true", help="also create demo users, tickets, comments, and audit history")
-    seed(demo=parser.parse_args().demo)
+    try:
+        seed(demo=parser.parse_args().demo)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from None
