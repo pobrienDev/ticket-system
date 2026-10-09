@@ -46,7 +46,7 @@ docker compose up --build
 docker compose exec api python -m app.seed --demo   # first run: demo data
 ```
 
-UI at http://localhost:5173, API at http://localhost:8000. Compose seeds an admin login (`admin@example.com` / `admin123` — change it in `docker-compose.yml`).
+UI at http://localhost:5173, API at http://localhost:8000. Compose runs the migrations but no seed: the `exec ... app.seed` line above is what creates the categories and the admin login (`admin@example.com` / `admin123`, from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` defaults in `docker-compose.yml`), and `--demo` adds the demo users and tickets. Until it has run there is no admin and the category list is empty.
 
 **Or manually** — requires Python 3.12+ and Node 22.12+ (the test toolchain, vitest and jsdom, does not run on Node 20).
 

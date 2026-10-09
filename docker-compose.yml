@@ -2,7 +2,9 @@
 #
 #   docker compose up --build
 #
-# UI on http://localhost:5173, API on http://localhost:8000. First run:
+# UI on http://localhost:5173, API on http://localhost:8000. The api image
+# migrates on boot but does not seed; on the first run create the categories
+# and the admin (ADMIN_EMAIL / ADMIN_PASSWORD below) plus demo data with:
 #   docker compose exec api python -m app.seed --demo
 services:
   db:
