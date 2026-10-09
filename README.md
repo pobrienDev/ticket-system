@@ -140,13 +140,13 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), then pytest with the coverage gate
 2. **frontend** — oxlint + vitest + production build of the client
 3. **image** — builds the Dockerfile and boots the app inside the image, so a Dockerfile change or base-image bump is tested, not just linted
-4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret)
+4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret) with the commit that just passed as `ref`, so a later push can't be built in its place; deploys are serialised by a concurrency group
 
 `.github/dependabot.yml` opens weekly PRs for pip, npm, the Docker base image digest, and Actions versions — the counterpart to everything being pinned. Minor and patch bumps arrive grouped; majors come one at a time.
 
 ## Deployment
 
-The live instance runs the API on Render (built from the `Dockerfile`, Virginia), PostgreSQL 16 on Neon (same AWS region, direct endpoint), and the client on Vercel. Render's auto-deploy is off on purpose: the CI `deploy` job is the only thing that ships, so nothing reaches production without passing the test, frontend, and image jobs.
+The live instance runs the API on Render (built from the `Dockerfile`, Virginia), PostgreSQL 16 on Neon (same AWS region, direct endpoint), and the client on Vercel. Render's auto-deploy is off on purpose: the CI `deploy` job is the only thing that ships, and it names the exact commit that passed, so nothing reaches production without passing the test, frontend, and image jobs.
 
 - **Backend** → Render/Railway (or any container host via the included `Dockerfile`, which runs migrations on boot, runs as a non-root user, and carries a `HEALTHCHECK` against `/health`): set `JWT_SECRET`, `DATABASE_URL` (managed Postgres), `SENDGRID_API_KEY`, `EMAIL_FROM`, `CORS_ORIGINS`, `APP_ENV=production` (disables the public API docs), and `TRUST_PROXY_HEADERS=true` when a proxy or load balancer sits in front (so rate limits key on the real client, not the proxy); run `alembic upgrade head` then `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. The API sets `nosniff`, `X-Frame-Options`, and `Referrer-Policy` itself; HSTS belongs at the TLS-terminating proxy.
 - **Frontend** → Vercel/Netlify: build `client/`, point API calls at the backend URL, add that origin to `CORS_ORIGINS`
