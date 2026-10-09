@@ -26,14 +26,14 @@ from .routers import categories, comments, tickets, users
 # Root logging config so app loggers (e.g. the console email backend in
 # notifications.py) actually print; uvicorn only configures its own loggers.
 logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    level=(os.environ.get("LOG_LEVEL") or "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
 # APP_ENV=production turns off the interactive docs and the raw OpenAPI
 # spec. They are invaluable in development and for demos, but in production
 # they publish every route and schema to anyone who finds the URL.
-APP_ENV = os.environ.get("APP_ENV", "development").lower()
+APP_ENV = (os.environ.get("APP_ENV") or "development").lower()
 
 
 def docs_settings(env: str) -> dict:

@@ -37,6 +37,12 @@ def test_bad_limit_string_fails_at_boot(monkeypatch):
         rate_limit._limit_from_env("LOGIN_RATE_LIMIT", "10/minute")
 
 
+def test_blank_limit_string_means_the_default(monkeypatch):
+    # A .env line like LOGIN_RATE_LIMIT= arrives as "", not as a missing key.
+    monkeypatch.setenv("LOGIN_RATE_LIMIT", "")
+    assert rate_limit._limit_from_env("LOGIN_RATE_LIMIT", "10/minute") == "10/minute"
+
+
 # --- Client identity --------------------------------------------------------
 
 

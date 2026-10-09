@@ -42,7 +42,7 @@ if len(SECRET_KEY.encode()) < MIN_SECRET_BYTES:
     raise RuntimeError(f"JWT_SECRET must be at least {MIN_SECRET_BYTES} bytes long.")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES") or "60")
 
 
 def hash_password(password: str) -> str:

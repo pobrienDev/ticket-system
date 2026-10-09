@@ -15,10 +15,6 @@ known-first-party = ["app", "tests"]
 # demo fixture rows read better as one line per ticket
 "app/seed.py" = ["E501"]
 
-[tool.coverage.run]
-# The seed script is a CLI fixture, not app logic under test.
-omit = ["app/seed.py"]
-
 [tool.coverage.report]
 # Keep the suite honest: coverage below this fails `pytest --cov=app`.
 fail_under = 85

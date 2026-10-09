@@ -99,7 +99,9 @@ def seed_demo(db):
         print("Tickets already exist; skipping demo data.")
         return
 
-    demo_password = os.environ.get("DEMO_PASSWORD", "demo1234")
+    # `or`, not a get() default: .env.example ships DEMO_PASSWORD= and
+    # load_dotenv() sets a blank value, which must still mean "use the default".
+    demo_password = os.environ.get("DEMO_PASSWORD") or "demo1234"
     users = {}
     for email, is_admin in DEMO_USERS:
         user = db.query(User).filter(User.email == email).first()
