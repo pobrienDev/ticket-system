@@ -41,6 +41,18 @@ SORT_OPTIONS = {
 }
 
 
+def contains_pattern(text: str) -> str:
+    """A LIKE pattern that matches `text` literally, anywhere in a value.
+
+    `%` and `_` are wildcards to LIKE, so a search for "100%" would match
+    "100 users" and "_" alone would match everything. Each is escaped (the
+    escape character itself first), and callers pass escape="\\" so the
+    engine honours it.
+    """
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def visible_tickets(db: Session, user: models.User):
     """Tickets this user may see: admins see all, everyone else their own or assigned."""
     query = db.query(models.Ticket)
@@ -120,7 +132,7 @@ def list_tickets(
     category_id: int | None = None,
     assignee_id: int | None = None,
     owner_id: int | None = None,
-    q: str | None = None,
+    q: str | None = Query(default=None, max_length=schemas.SEARCH_MAX),
     sort: str = Query(default="-created_at", pattern="^(-?(priority|created_at)|due_date)$"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -137,9 +149,12 @@ def list_tickets(
     if owner_id is not None:
         query = query.filter(models.Ticket.owner_id == owner_id)
     if q:
-        needle = f"%{q}%"
+        needle = contains_pattern(q)
         query = query.filter(
-            or_(models.Ticket.title.ilike(needle), models.Ticket.description.ilike(needle))
+            or_(
+                models.Ticket.title.ilike(needle, escape="\\"),
+                models.Ticket.description.ilike(needle, escape="\\"),
+            )
         )
     total = query.count()
     items = (

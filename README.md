@@ -110,12 +110,12 @@ Demo login (after `--demo` seeding): agents `sarah.chen@example.com` / `mike.tor
 
 Non-admins only see tickets they own or are assigned to — list, detail, audit, and comments are all scoped, and out-of-scope IDs return 404, not 403, so ticket IDs can't be probed.
 
-Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, password 8 characters to 72 bytes — bcrypt's limit), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
+Input validation runs before any handler: every text field has a length cap (title 200, description 10,000, comment 5,000, category name 100, search term 200, password 8 characters to 72 bytes — bcrypt's limit), and titles, comment bodies, and category names are trimmed and must contain text — whitespace-only values are rejected with a 422.
 
 ## Testing
 
 ```bash
-pytest --cov=app     # 185 backend tests, ~96% coverage (fails under 85%)
+pytest --cov=app     # 187 backend tests, ~96% coverage (fails under 85%)
 ruff check .         # lint
 
 cd client

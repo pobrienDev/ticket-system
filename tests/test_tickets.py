@@ -9,7 +9,7 @@ visibility scoping between users lives in test_visibility.py.
 import pytest
 from sqlalchemy import event
 
-from app import models
+from app import models, schemas
 from tests.conftest import engine
 
 
@@ -124,6 +124,26 @@ def test_list_tickets_search(authed_client):
     body = authed_client.get("/tickets", params={"q": "cable"}).json()
     assert body["total"] == 1
     assert body["items"][0]["title"] == "Monitor flickers"
+
+
+def test_search_matches_wildcard_characters_literally(authed_client):
+    # % and _ are LIKE wildcards; typed by a person they are just characters.
+    create_ticket(authed_client, title="CPU at 100% on the file server")
+    create_ticket(authed_client, title="Rename file_name.txt fails")
+    create_ticket(authed_client, title="Rename filename.txt fails")
+
+    def titles(q):
+        return [t["title"] for t in authed_client.get("/tickets", params={"q": q}).json()["items"]]
+
+    assert titles("100%") == ["CPU at 100% on the file server"]
+    assert titles("file_name") == ["Rename file_name.txt fails"]
+    assert titles("%") == ["CPU at 100% on the file server"]  # not "everything"
+
+
+def test_search_term_has_a_length_cap(authed_client):
+    at_cap = "x" * schemas.SEARCH_MAX
+    assert authed_client.get("/tickets", params={"q": at_cap}).status_code == 200
+    assert authed_client.get("/tickets", params={"q": at_cap + "x"}).status_code == 422
 
 
 # --- List: sorting and pagination ------------------------------------------
