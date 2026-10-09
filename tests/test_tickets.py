@@ -134,6 +134,7 @@ def test_list_tickets_search(authed_client):
         ("-priority", ["Low", "Medium", "Critical"]),
         ("created_at", ["Low", "Critical", "Medium"]),  # creation order
         ("-created_at", ["Medium", "Critical", "Low"]),  # the default: newest first
+        ("due_date", ["Critical", "Medium", "Low"]),  # SLA: a P1 is due soonest
     ],
 )
 def test_list_tickets_sort_orders(authed_client, sort, expected):
@@ -145,6 +146,19 @@ def test_list_tickets_sort_orders(authed_client, sort, expected):
     response = authed_client.get("/tickets", params={"sort": sort})
     assert response.status_code == 200
     assert [t["title"] for t in response.json()["items"]] == expected
+
+
+def test_due_date_sort_puts_tickets_without_a_due_date_last(authed_client, db):
+    # Tickets created before due dates existed have none. SQLite sorts NULL
+    # first and Postgres last, so the placement is pinned rather than left
+    # to the engine.
+    create_ticket(authed_client, title="Legacy", priority=5)
+    create_ticket(authed_client, title="Soon", priority=1)
+    db.query(models.Ticket).filter(models.Ticket.title == "Legacy").update({"due_date": None})
+    db.commit()
+
+    response = authed_client.get("/tickets", params={"sort": "due_date"})
+    assert [t["title"] for t in response.json()["items"]] == ["Soon", "Legacy"]
 
 
 def test_list_tickets_default_sort_is_newest_first(authed_client):

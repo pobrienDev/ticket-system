@@ -35,7 +35,9 @@ SORT_OPTIONS = {
     "-priority": models.Ticket.priority.desc(),
     "created_at": models.Ticket.created_at.asc(),
     "-created_at": models.Ticket.created_at.desc(),
-    "due_date": models.Ticket.due_date.asc(),
+    # Tickets from before SLA due dates existed have none. Put them last on
+    # every engine: SQLite sorts NULL first in ASC, Postgres sorts it last.
+    "due_date": models.Ticket.due_date.asc().nulls_last(),
 }
 
 
