@@ -13,7 +13,7 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import _rate_limit_exceeded_handler
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,10 +50,28 @@ app = FastAPI(
     **docs_settings(APP_ENV),
 )
 
+
+
+def rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Turn a tripped limit into a 429 the client can explain.
+
+    slowapi's stock handler answers {"error": ...}; every other error from
+    this API carries `detail`, which is the key the frontend reads, so a
+    throttled login used to surface as a bare "Request failed (429)".
+    Retry-After is the window of the limit that tripped (60 for "10/minute").
+    """
+    retry_after = exc.limit.limit.get_expiry()
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Too many attempts. Try again in {retry_after} seconds."},
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 # slowapi reads the limiter off app.state and needs a handler registered to
-# turn RateLimitExceeded into a proper 429 response.
+# turn RateLimitExceeded into a 429 response.
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded)
 
 # In dev the Vite proxy makes requests same-origin, so CORS only matters for a
 # separately-hosted frontend (e.g. Vercel). Set CORS_ORIGINS=https://myapp.vercel.app

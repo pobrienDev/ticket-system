@@ -165,6 +165,16 @@ describe('error handling', () => {
     await expect(api.listTickets()).rejects.toThrow('Request failed (500)')
   })
 
+  it('surfaces the wait message on a throttled request', async () => {
+    // The API answers 429 with `detail` like every other error, so a
+    // throttled login tells the user to wait rather than "Request failed (429)".
+    fetch.mockResolvedValue(jsonResponse({ detail: 'Too many attempts. Try again in 60 seconds.' }, 429))
+    await expect(api.login('joyce@example.com', 'pw')).rejects.toMatchObject({
+      message: 'Too many attempts. Try again in 60 seconds.',
+      status: 429,
+    })
+  })
+
   it('returns null for 204 responses', async () => {
     // DELETE returns no body; callers must not try to parse one.
     fetch.mockResolvedValue({ ok: true, status: 204, json: () => Promise.reject(new Error('empty')) })

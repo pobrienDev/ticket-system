@@ -91,6 +91,19 @@ def test_login_is_throttled_per_client(client, test_user, limiting_enabled):
     assert response.status_code == 429
 
 
+def test_throttled_response_explains_itself(client, test_user, limiting_enabled):
+    # The frontend reads `detail` from every error body; slowapi's default
+    # handler used `error`, so a throttled login showed "Request failed
+    # (429)". Retry-After tells any client how long to back off.
+    limit = parse_limit(rate_limit.LOGIN_RATE_LIMIT)
+    for _ in range(limit.amount):
+        client.post("/auth/login", data={"username": test_user.email, "password": "wrong"})
+    response = client.post("/auth/login", data={"username": test_user.email, "password": "wrong"})
+    assert response.status_code == 429
+    assert response.json()["detail"].startswith("Too many attempts")
+    assert response.headers["Retry-After"] == str(limit.get_expiry())
+
+
 def test_register_is_throttled_harder_than_login(client, limiting_enabled):
     allowed = parse_limit(rate_limit.REGISTER_RATE_LIMIT).amount
     for i in range(allowed):
