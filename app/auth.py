@@ -42,6 +42,12 @@ if len(SECRET_KEY.encode()) < MIN_SECRET_BYTES:
     raise RuntimeError(f"JWT_SECRET must be at least {MIN_SECRET_BYTES} bytes long.")
 
 ALGORITHM = "HS256"
+
+# A real bcrypt hash of a throwaway string, checked against when a login
+# names an email with no account. That makes an unknown email cost the same
+# bcrypt round as a wrong password, so response time cannot reveal which
+# emails are registered. Same cost factor as gensalt() so the timing matches.
+DUMMY_PASSWORD_HASH = "$2b$12$z0n6jeiRz564SALBlvBOxevpY9DldHZppkxNUnlOuCUYZrdB3EtWC"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES") or "60")
 
 
