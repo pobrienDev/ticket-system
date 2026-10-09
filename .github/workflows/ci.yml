@@ -31,12 +31,38 @@ jobs:
       - run: ruff check .
       # Exercise the actual migration chain against Postgres (the deploy
       # artifact), and fail if models have drifted from the migrations.
+      # The test suite rebuilds its schema from the models, so this step is
+      # the only place the migrations themselves are proven.
       - name: Run and verify migrations
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:test@localhost:5432/postgres
         run: |
           alembic upgrade head
           alembic check
+          # alembic check compares columns and indexes, not Postgres enum
+          # values or CHECK constraints: a migration that forgot to add the
+          # 'new' status or the priority range check would pass it. Look at
+          # the migrated schema directly for both.
+          python - <<'EOF'
+          from sqlalchemy import CheckConstraint, create_engine, inspect, text
+          from app import models
+          from app.database import DATABASE_URL
+          with create_engine(DATABASE_URL).connect() as conn:
+              labels = conn.execute(text(
+                  "SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
+                  "WHERE t.typname = 'ticketstatus' ORDER BY e.enumsortorder"
+              )).scalars().all()
+              expected = [s.value for s in models.TicketStatus]
+              assert labels == expected, f"enum values {labels} != {expected}"
+              present = {c["name"] for c in inspect(conn).get_check_constraints("tickets")}
+              wanted = {c.name for c in models.Ticket.__table__.constraints if isinstance(c, CheckConstraint)}
+              assert wanted <= present, f"missing CHECK constraints: {wanted - present}"
+          print("migrated schema ok: enum", labels, "checks", sorted(wanted))
+          EOF
+          # Every migration must undo cleanly and the chain must rebuild from
+          # nothing; a leftover enum type once broke exactly this.
+          alembic downgrade base
+          alembic upgrade head
       - run: pytest --cov=app
 
   # Frontend: lockfile-exact install, lint, unit tests, and a production

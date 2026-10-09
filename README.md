@@ -137,7 +137,7 @@ When an admin assigns a ticket, the assignee is emailed via SendGrid. Failure ha
 
 `.github/workflows/ci.yml` runs on every push and PR:
 
-1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), then pytest with the coverage gate
+1. **test** — ruff, then `alembic upgrade head` + `alembic check` against a PostgreSQL 16 service container (so a model change without a migration fails CI), an inspection of the migrated schema for the enum values and CHECK constraint that `alembic check` doesn't compare, and a `downgrade base` / `upgrade head` round trip, then pytest with the coverage gate
 2. **frontend** — oxlint + vitest + production build of the client
 3. **image** — builds the Dockerfile and boots the app inside the image, so a Dockerfile change or base-image bump is tested, not just linted
 4. **deploy** — on merge to `main` only, once the other three pass, POSTs to a Render deploy hook (`RENDER_DEPLOY_HOOK_URL` secret) with the commit that just passed as `ref`, so a later push can't be built in its place; deploys are serialised by a concurrency group
