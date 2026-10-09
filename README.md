@@ -48,7 +48,7 @@ docker compose exec api python -m app.seed --demo   # first run: demo data
 
 UI at http://localhost:5173, API at http://localhost:8000. Compose seeds an admin login (`admin@example.com` / `admin123` — change it in `docker-compose.yml`).
 
-**Or manually** — requires Python 3.12+ and Node 20+.
+**Or manually** — requires Python 3.12+ and Node 22.12+ (the test toolchain, vitest and jsdom, does not run on Node 20).
 
 **Backend:**
 
