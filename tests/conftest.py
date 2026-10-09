@@ -31,6 +31,13 @@ import os
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-padded-to-32B")
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["SENDGRID_API_KEY"] = ""
+# The other knobs the assertions depend on are pinned too: the docs tests
+# need development mode, the email tests need no frontend link, and the
+# token test needs the default lifetime. A developer's .env that sets any of
+# them (APP_URL is the one the README suggests) must not change a result.
+os.environ["APP_ENV"] = "development"
+os.environ["APP_URL"] = ""
+os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "60"
 
 # "sqlite://" with no path is an in-memory database. CI sets TEST_DATABASE_URL
 # to a Postgres URL so the same tests also run on the production engine.
