@@ -35,5 +35,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
 
 # Migrations run on boot so a fresh database is always brought to head;
-# upgrade is a no-op when the schema is already current.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# upgrade is a no-op when the schema is already current. `exec` matters:
+# the shell is PID 1 and dash does not hand off to the last command on its
+# own, so without it uvicorn is a child that never receives the SIGTERM from
+# `docker stop` or a redeploy and is killed after the grace period,
+# dropping in-flight requests and queued notification emails.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
