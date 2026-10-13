@@ -6,6 +6,7 @@ matter in real deployments (connection health checks) or that silently
 change behavior if lost (SQLite foreign-key enforcement).
 """
 
+import pytest
 from sqlalchemy import text
 
 from app import database
@@ -18,7 +19,7 @@ def test_engine_pre_pings_pooled_connections():
 
 def test_sqlite_connections_enforce_foreign_keys():
     if not database.IS_SQLITE:
-        return  # Postgres always enforces; the hook is SQLite-only by design
+        pytest.skip("Postgres always enforces foreign keys; the pragma hook is SQLite-only")
     with database.engine.connect() as conn:
         assert conn.execute(text("PRAGMA foreign_keys")).scalar() == 1
 

@@ -148,7 +148,7 @@ def seed_demo(db):
             priority=priority,
             owner_id=users[owner].id,
             assignee_id=users[assignee].id if assignee else None,
-            category_id=categories[category].id if category in categories else None,
+            category_id=categories[category].id,
             due_date=created + datetime.timedelta(hours=SLA_HOURS[priority]),
             resolved_at=resolved_at,
             created_at=created,
@@ -180,7 +180,7 @@ def seed_demo(db):
             step += gap
             log("status", old, new, step)
 
-        for j, (author, body) in enumerate(comments or []):
+        for j, (author, body) in enumerate(comments):
             db.add(Comment(
                 ticket_id=ticket.id,
                 author_id=users[author].id,

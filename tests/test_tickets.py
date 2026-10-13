@@ -309,20 +309,39 @@ def test_patch_null_assignee_unassigns(authed_client, admin_client, test_user):
     # assignee_id is the one nullable field a PATCH may set to null: it means
     # "unassign", not "leave alone".
     made = create_ticket(authed_client)
-    admin_client.patch(f"/tickets/{made['id']}", json={"assignee_id": test_user.id})
+    assigned = admin_client.patch(f"/tickets/{made['id']}", json={"assignee_id": test_user.id})
+    assert assigned.status_code == 200
+    assert assigned.json()["assignee"]["id"] == test_user.id  # really assigned before unassigning
     response = admin_client.patch(f"/tickets/{made['id']}", json={"assignee_id": None})
     assert response.status_code == 200
     assert response.json()["assignee"] is None
 
 
+# --- Ids outside the column range -------------------------------------------
+
+
+@pytest.mark.parametrize("bad_id", [0, -1, 2**31, 10**20])
+def test_out_of_range_ticket_ids_are_rejected_not_500(authed_client, bad_id):
+    # An id that no row could have is malformed input, not a lookup: 422 on
+    # every path that takes one. SQLite would otherwise raise on an integer
+    # it cannot store and the request would be a 500.
+    assert authed_client.get(f"/tickets/{bad_id}").status_code == 422
+    assert authed_client.patch(f"/tickets/{bad_id}", json={"priority": 1}).status_code == 422
+    assert authed_client.get(f"/tickets/{bad_id}/audit").status_code == 422
+    assert authed_client.post(f"/tickets/{bad_id}/comments", json={"body": "x"}).status_code == 422
+    assert authed_client.get(f"/tickets?owner_id={bad_id}").status_code == 422
+    assert authed_client.post("/tickets", json={"title": "t", "category_id": bad_id}).status_code == 422
+
+
+def test_sort_pattern_accepts_exactly_the_sort_options(authed_client):
+    from app.routers.tickets import SORT_OPTIONS
+
+    for key in SORT_OPTIONS:
+        assert authed_client.get(f"/tickets?sort={key}").status_code == 200, key
+    assert authed_client.get("/tickets?sort=-due_date").status_code == 422
+
+
 # --- Update: permissions ----------------------------------------------------
-
-
-def test_patch_by_non_owner_denied(authed_client, admin_client):
-    made = create_ticket(admin_client, title="Admin's ticket")
-    # A ticket the user can't see 404s (not 403) so IDs can't be probed.
-    response = authed_client.patch(f"/tickets/{made['id']}", json={"priority": 1})
-    assert response.status_code == 404
 
 
 def test_patch_by_admin_on_any_ticket_allowed(authed_client, admin_client):

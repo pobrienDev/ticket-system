@@ -15,8 +15,11 @@
 // check retry on their own for a few minutes while telling the user what is
 // happening. Only after the attempts are used up does an error with a
 // manual Retry appear.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api, getToken, setToken, setUnauthorizedHandler } from './api'
+import AuthPage from './components/AuthPage'
+import Dashboard from './components/Dashboard'
+import './App.css'
 
 // 8 attempts, 10 s apart, each allowed REQUEST_TIMEOUT_MS: a cold start of
 // up to three minutes or so resolves without the user doing anything.
@@ -28,9 +31,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // Any failure that is not "your token is bad" means the server did not give
 // a usable answer — unreachable, timed out, or a 5xx — and is worth retrying.
 const isBadToken = (err) => err instanceof ApiError && err.status === 401
-import AuthPage from './components/AuthPage'
-import Dashboard from './components/Dashboard'
-import './App.css'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -41,48 +41,51 @@ function App() {
   const [serverState, setServerState] = useState('ok')
   // Which retry the token check is on (0 = first try); drives the status text.
   const [attempt, setAttempt] = useState(0)
-  // Set on unmount so an in-flight retry loop stops touching state.
-  const alive = useRef(true)
-  useEffect(() => {
-    alive.current = true
-    return () => {
-      alive.current = false
-    }
-  }, [])
+  // Bumped by the Retry button to run the token check again.
+  const [retry, setRetry] = useState(0)
 
-  const loadUser = useCallback(async () => {
-    if (!getToken()) return
-    setChecking(true)
-    setBootError(null)
-    for (let n = 0; n < BOOT_ATTEMPTS; n += 1) {
-      try {
-        const me = await api.me()
-        if (alive.current) setUser(me)
-        break
-      } catch (err) {
-        if (isBadToken(err)) {
-          setToken(null) // expired or invalid token — sign in again
+  // Validate a stored token, retrying while the server wakes. The cleanup
+  // flag stops a loop whose component is gone (or, in development, the
+  // duplicate StrictMode run) from touching state or issuing requests.
+  useEffect(() => {
+    if (!getToken()) return undefined
+    let cancelled = false
+    ;(async () => {
+      for (let n = 0; n < BOOT_ATTEMPTS && !cancelled; n += 1) {
+        try {
+          const me = await api.me()
+          if (cancelled) return
+          setUser(me)
           break
-        }
-        if (n + 1 < BOOT_ATTEMPTS) {
-          if (alive.current) setAttempt(n + 1)
-          await sleep(BOOT_RETRY_MS)
-          if (!alive.current) return
-        } else if (alive.current) {
-          // Attempts used up: keep the token, offer a manual retry.
-          setBootError(err.message)
+        } catch (err) {
+          if (cancelled) return
+          if (isBadToken(err)) {
+            setToken(null) // expired or invalid token — sign in again
+            break
+          }
+          if (n + 1 < BOOT_ATTEMPTS) {
+            setAttempt(n + 1)
+            await sleep(BOOT_RETRY_MS)
+          } else {
+            setBootError(err.message) // attempts used up: keep the token, offer Retry
+          }
         }
       }
+      if (!cancelled) {
+        setAttempt(0)
+        setChecking(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-    if (alive.current) {
-      setAttempt(0)
-      setChecking(false)
-    }
-  }, [])
+  }, [retry])
 
-  useEffect(() => {
-    loadUser()
-  }, [loadUser])
+  function retryBoot() {
+    setBootError(null)
+    setChecking(true)
+    setRetry((n) => n + 1)
+  }
 
   // Warm the server up on every visit, and keep the login page informed.
   // Fire-and-forget: nothing waits on it, so a healthy server costs one
@@ -132,7 +135,7 @@ function App() {
       <div className="auth-page">
         <div className="auth-card">
           <h1>Ticket System</h1>
-          <p className="auth-card__error">
+          <p className="auth-card__error" role="alert">
             Couldn't reach the API server ({bootError}).
             {import.meta.env.DEV && (
               <>
@@ -141,7 +144,7 @@ function App() {
               </>
             )}
           </p>
-          <button className="btn btn--primary btn--block" type="button" onClick={loadUser}>
+          <button className="btn btn--primary btn--block" type="button" onClick={retryBoot}>
             Retry
           </button>
         </div>

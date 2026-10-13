@@ -434,25 +434,22 @@
   opacity: 1;
 }
 
-.ticket-card__button {
+.ticket-card__link {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  width: 100%;
   padding: 1rem 1.25rem;
-  background: none;
-  border: none;
-  text-align: left;
-  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
   border-radius: inherit;
 }
 
-.ticket-card__button:focus-visible {
+.ticket-card__link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.ticket-card__button:hover h3 {
+.ticket-card__link:hover h3 {
   color: var(--accent-strong);
 }
 

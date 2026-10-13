@@ -5,6 +5,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { deferred } from './helpers'
 import AuthPage from '../components/AuthPage'
 
 vi.mock('../api', () => ({
@@ -19,15 +20,6 @@ vi.mock('../api', () => ({
 import { api, setToken } from '../api'
 
 const user = { id: 1, email: 'joyce@example.com', is_admin: false }
-
-// A promise the test resolves by hand, to observe the in-flight state.
-function deferred() {
-  let resolve
-  const promise = new Promise((r) => {
-    resolve = r
-  })
-  return { promise, resolve }
-}
 
 async function fillAndSubmit(email, password, buttonName) {
   await userEvent.type(screen.getByLabelText('Email'), email)

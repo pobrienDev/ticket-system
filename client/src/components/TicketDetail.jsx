@@ -2,11 +2,10 @@
 // an inline edit form for title/description/category, the audit history,
 // and comments. Every change goes through applyPatch so in-flight state,
 // error display, and list/stats refresh are handled once.
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { PRIORITIES, TRANSITIONS, isOverdue, priorityLabel, statusLabel } from '../constants'
-
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+import { LIMITS, PRIORITIES, TRANSITIONS, formatDate, statusLabel } from '../constants'
+import TicketBadges from './TicketBadges'
 
 function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, onDeleted }) {
   const [ticket, setTicket] = useState(null)
@@ -17,34 +16,40 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
   const [editForm, setEditForm] = useState(null) // null = not editing
   const [error, setError] = useState(null)
 
-  const load = useCallback(async () => {
-    try {
-      setTicket(await api.getTicket(ticketId))
-    } catch (err) {
-      setError(err.message)
+  useEffect(() => {
+    let cancelled = false
+    api
+      .getTicket(ticketId)
+      .then((loaded) => {
+        if (!cancelled) setTicket(loaded)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message)
+      })
+    return () => {
+      cancelled = true
     }
   }, [ticketId])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   async function applyPatch(patch) {
     setError(null)
     setSaving(true)
+    let updated
     try {
-      const updated = await api.updateTicket(ticketId, patch)
-      // The PATCH response is the fresh ticket; keep the loaded comments.
-      setTicket((prev) => ({ ...updated, comments: prev?.comments ?? [] }))
-      if (auditLog !== null) setAuditLog(await api.getAuditLog(ticketId))
-      onChanged()
-      return true
+      updated = await api.updateTicket(ticketId, patch)
     } catch (err) {
       setError(err.message)
-      return false
-    } finally {
       setSaving(false)
+      return false
     }
+    // The PATCH response is the fresh ticket; keep the loaded comments.
+    setTicket((prev) => ({ ...updated, comments: prev?.comments ?? [] }))
+    setSaving(false)
+    onChanged()
+    // History is a secondary view: refresh it if it is open, but a failure
+    // there must not be reported as a failed save — the save succeeded.
+    if (auditLog !== null) api.getAuditLog(ticketId).then(setAuditLog).catch(() => {})
+    return true
   }
 
   async function handleSaveEdit(event) {
@@ -64,7 +69,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
     try {
       await api.addComment(ticketId, comment)
       setComment('')
-      await load()
+      setTicket(await api.getTicket(ticketId))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -100,7 +105,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
         <button className="btn--link" type="button" onClick={onBack}>
           ← Back to tickets
         </button>
-        <p className="empty" role="status">
+        <p className="empty" role={error ? 'alert' : 'status'}>
           {error ?? 'Loading ticket…'}
         </p>
       </div>
@@ -112,8 +117,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
   const canEdit = user.is_admin || ticket.owner.id === user.id || ticket.assignee?.id === user.id
   // The status select offers only legal next states, so the UI can't even
   // express a transition the server would reject with a 409.
-  const statusOptions = [ticket.status, ...TRANSITIONS[ticket.status]]
-  const overdue = isOverdue(ticket)
+  const statusOptions = [ticket.status, ...(TRANSITIONS[ticket.status] ?? [])]
 
   return (
     <div className="detail">
@@ -130,7 +134,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
                 type="text"
                 value={editForm.title}
                 onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                maxLength={200}
+                maxLength={LIMITS.title}
                 required
               />
             </label>
@@ -140,6 +144,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
                 rows={4}
                 value={editForm.description}
                 onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                maxLength={LIMITS.description}
               />
             </label>
             <label className="field">
@@ -168,12 +173,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
         ) : (
           <>
             <div className="ticket-card__title-row">
-              <span className={`badge badge--p${ticket.priority}`}>{priorityLabel(ticket.priority)}</span>
-              <span className={`badge badge--status badge--status-${ticket.status}`}>
-                {statusLabel(ticket.status)}
-              </span>
-              {overdue && <span className="badge badge--overdue">Overdue</span>}
-              {ticket.category && <span className="badge badge--category">{ticket.category.name}</span>}
+              <TicketBadges ticket={ticket} />
               <h2>
                 #{ticket.id} {ticket.title}
               </h2>
@@ -181,10 +181,10 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
 
             {ticket.description && <p className="detail__description">{ticket.description}</p>}
             <p className="ticket-card__meta">
-              Opened by {ticket.owner.email} on {dateFormat.format(new Date(ticket.created_at))} ·{' '}
+              Opened by {ticket.owner.email} on {formatDate(ticket.created_at)} ·{' '}
               {ticket.assignee ? `assigned to ${ticket.assignee.email}` : 'unassigned'}
-              {ticket.due_date && ` · due ${dateFormat.format(new Date(ticket.due_date))}`}
-              {ticket.resolved_at && ` · resolved ${dateFormat.format(new Date(ticket.resolved_at))}`}
+              {ticket.due_date && ` · due ${formatDate(ticket.due_date)}`}
+              {ticket.resolved_at && ` · resolved ${formatDate(ticket.resolved_at)}`}
             </p>
           </>
         )}
@@ -289,7 +289,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
                     {entry.new_value ?? '—'}
                     <span className="audit__meta">
                       {' '}
-                      by {entry.actor.email} on {dateFormat.format(new Date(entry.created_at))}
+                      by {entry.actor.email} on {formatDate(entry.created_at)}
                     </span>
                   </li>
                 ))}
@@ -311,7 +311,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
               <li key={c.id} className="comment">
                 <p className="comment__body">{c.body}</p>
                 <p className="comment__meta">
-                  {c.author.email} · {dateFormat.format(new Date(c.created_at))}
+                  {c.author.email} · {formatDate(c.created_at)}
                 </p>
               </li>
             ))}
@@ -326,7 +326,7 @@ function TicketDetail({ ticketId, user, users, categories, onBack, onChanged, on
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="What did you try? What changed?"
-              maxLength={5000}
+              maxLength={LIMITS.comment}
               required
             />
           </label>

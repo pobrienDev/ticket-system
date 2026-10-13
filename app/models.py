@@ -121,8 +121,6 @@ class Category(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=False)
 
-    tickets = relationship("Ticket", back_populates="category")
-
 
 class Ticket(Base):
     """The central record. Two foreign keys point at users — the owner who
@@ -159,7 +157,7 @@ class Ticket(Base):
     # out so it knows which FK backs which relationship.
     owner = relationship("User", foreign_keys=[owner_id])
     assignee = relationship("User", foreign_keys=[assignee_id])
-    category = relationship("Category", back_populates="tickets")
+    category = relationship("Category")
     # Comments and audit entries have no meaning without their ticket, so they
     # are deleted with it (cascade) rather than left as orphans.
     comments = relationship(

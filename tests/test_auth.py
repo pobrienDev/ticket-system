@@ -196,6 +196,14 @@ def test_token_with_malformed_subject_rejected(client):
         assert response.status_code == 401, f"sub={bad_sub!r}: {response.status_code}"
 
 
+def test_token_with_out_of_range_subject_rejected(client):
+    # A subject past the id column's range can never be a row. It must be the
+    # same clean 401 as any other bad token, not a database error.
+    token = create_access_token({"sub": str(10**20)})
+    response = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+
 def test_token_for_unknown_user_id_rejected(client):
     token = create_access_token({"sub": "999999"})
     assert client.get("/users/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401

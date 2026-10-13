@@ -6,8 +6,9 @@ Authorization model, applied consistently across this module:
   own or are assigned to. Enforced at the query level by visible_tickets(),
   which every read and write path builds on. Out-of-scope ids return 404 so
   that ticket ids cannot be probed.
-* Editing — the owner, the assignee, or an admin may change a ticket;
-  assignment itself is admin-only; deletion is admin-only.
+* Editing — whoever can see a ticket may change it (that is exactly the
+  owner, the assignee, or an admin); assignment itself is admin-only;
+  deletion is admin-only.
 * Lifecycle — status changes must follow models.ALLOWED_TRANSITIONS; an
   illegal move is a 409 because the request conflicts with current state,
   not because it is malformed or unauthorized.
@@ -16,8 +17,10 @@ Every change to an auditable field writes an AuditLogEntry.
 """
 
 import datetime
+import re
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -39,6 +42,20 @@ SORT_OPTIONS = {
     # every engine: SQLite sorts NULL first in ASC, Postgres sorts it last.
     "due_date": models.Ticket.due_date.asc().nulls_last(),
 }
+# The query-parameter pattern is derived from the dict, so adding a sort key
+# is one edit and an unknown key is a 422 rather than a KeyError.
+SORT_PATTERN = f"^({'|'.join(re.escape(key) for key in SORT_OPTIONS)})$"
+
+# A ticket id in the URL, bounded like every other row id (see schemas.RowId).
+TicketId = Annotated[int, Path(ge=1, le=schemas.MAX_ROW_ID)]
+
+
+def category_or_400(db: Session, category_id: int) -> models.Category:
+    """The referenced category, or a 400: a missing reference is a bad request."""
+    category = db.get(models.Category, category_id)
+    if category is None:
+        raise HTTPException(status_code=400, detail="Unknown category_id")
+    return category
 
 
 def contains_pattern(text: str) -> str:
@@ -106,9 +123,7 @@ def create_ticket(
     current_user: models.User = Depends(get_current_user),
 ):
     if ticket.category_id is not None:
-        category = db.query(models.Category).filter(models.Category.id == ticket.category_id).first()
-        if not category:
-            raise HTTPException(status_code=400, detail="Unknown category_id")
+        category_or_400(db, ticket.category_id)
     now = utcnow()  # one timestamp so due_date is exactly created_at + SLA
     new_ticket = models.Ticket(
         title=ticket.title,
@@ -129,11 +144,11 @@ def create_ticket(
 @router.get("", response_model=schemas.TicketListResponse)
 def list_tickets(
     status_filter: models.TicketStatus | None = Query(default=None, alias="status"),
-    category_id: int | None = None,
-    assignee_id: int | None = None,
-    owner_id: int | None = None,
+    category_id: schemas.RowId | None = None,
+    assignee_id: schemas.RowId | None = None,
+    owner_id: schemas.RowId | None = None,
     q: str | None = Query(default=None, max_length=schemas.SEARCH_MAX),
-    sort: str = Query(default="-created_at", pattern="^(-?(priority|created_at)|due_date)$"),
+    sort: str = Query(default="-created_at", pattern=SORT_PATTERN),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -208,7 +223,7 @@ def ticket_stats(
         avg_resolution_hours = round(total_hours / len(resolution_pairs), 1)
 
     return schemas.TicketStatsResponse(
-        total=scope.count(),
+        total=sum(by_status.values()),
         by_status=by_status,
         unresolved=unresolved.count(),
         p1_unresolved=p1_unresolved,
@@ -220,7 +235,7 @@ def ticket_stats(
 
 @router.get("/{ticket_id}", response_model=schemas.TicketDetailResponse)
 def get_ticket(
-    ticket_id: int,
+    ticket_id: TicketId,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
@@ -242,7 +257,7 @@ def get_ticket(
 
 @router.patch("/{ticket_id}", response_model=schemas.TicketResponse)
 def update_ticket(
-    ticket_id: int,
+    ticket_id: TicketId,
     update: schemas.TicketUpdate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -253,22 +268,18 @@ def update_ticket(
     # what makes this a true partial update.
     changes = update.model_dump(exclude_unset=True)
 
-    # Checks run cheapest-and-broadest first: can you see it (404), is there
-    # anything to do (400), may you edit it (403), is the change legal (409).
+    # Checks run cheapest-and-broadest first: can you see it (404 — and
+    # seeing it is the edit right: visibility is exactly owner, assignee, or
+    # admin), is there anything to do (400), may you assign (403), is the
+    # change legal (409).
     if not changes:
         raise HTTPException(status_code=400, detail="No fields to update")
-    can_edit = current_user.is_admin or current_user.id in (ticket.owner_id, ticket.assignee_id)
-    if not can_edit:
-        raise HTTPException(
-            status_code=403, detail="Only the ticket owner, assignee, or an admin can edit a ticket"
-        )
     if "assignee_id" in changes and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only admins can assign tickets")
 
+    new_category = None
     if changes.get("category_id") is not None:
-        category = db.query(models.Category).filter(models.Category.id == changes["category_id"]).first()
-        if not category:
-            raise HTTPException(status_code=400, detail="Unknown category_id")
+        new_category = category_or_400(db, changes["category_id"])
 
     new_assignee = None
     if "assignee_id" in changes:
@@ -318,11 +329,7 @@ def update_ticket(
         record_change(db, ticket, current_user, "description", ticket.description, changes["description"])
     if "category_id" in changes and changes["category_id"] != ticket.category_id:
         old_name = ticket.category.name if ticket.category else None
-        new_name = None
-        if changes["category_id"] is not None:
-            new_name = db.query(models.Category.name).filter(
-                models.Category.id == changes["category_id"]
-            ).scalar()
+        new_name = new_category.name if new_category else None
         record_change(db, ticket, current_user, "category", old_name, new_name)
 
     assignee_changed = "assignee_id" in changes and changes["assignee_id"] != ticket.assignee_id
@@ -345,7 +352,7 @@ def update_ticket(
 
 @router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(
-    ticket_id: int,
+    ticket_id: TicketId,
     db: Session = Depends(get_db),
     admin: models.User = Depends(get_current_admin),
 ):
@@ -356,7 +363,7 @@ def delete_ticket(
 
 @router.get("/{ticket_id}/audit", response_model=list[schemas.AuditLogResponse])
 def get_audit_log(
-    ticket_id: int,
+    ticket_id: TicketId,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):

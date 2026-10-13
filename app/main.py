@@ -51,7 +51,6 @@ app = FastAPI(
 )
 
 
-
 def rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Turn a tripped limit into a 429 the client can explain.
 

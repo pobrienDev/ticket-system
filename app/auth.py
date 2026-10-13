@@ -17,9 +17,6 @@ import os
 
 import bcrypt
 import jwt
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # bcrypt hashes only the first 72 bytes of input. The API caps passwords so
 # they can never exceed this (see schemas.UserCreate); the constant lives

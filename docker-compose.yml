@@ -13,8 +13,6 @@ services:
       POSTGRES_USER: tickets
       POSTGRES_PASSWORD: tickets
       POSTGRES_DB: tickets
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

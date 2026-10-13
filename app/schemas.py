@@ -53,10 +53,13 @@ def _strip_non_blank(value: str) -> str:
 # Field(max_length=…) constraints run before this validator, on the raw value.
 NonBlank = Annotated[str, AfterValidator(_strip_non_blank)]
 
-# A reference to another row. Ids are positive integers; 0 or a negative
-# number can never match, so it is rejected as invalid input (422) rather
-# than looked up and reported as unknown (400).
-RowId = Annotated[int, Field(ge=1)]
+# A reference to another row. Ids are positive 32-bit integers (the columns
+# are Integer); 0, a negative number, or something past the column's range
+# can never match, so it is rejected as invalid input (422) rather than
+# looked up — SQLite in particular raises on an integer it cannot store,
+# which would surface as a 500 instead of a clean "not found".
+MAX_ROW_ID = 2**31 - 1
+RowId = Annotated[int, Field(ge=1, le=MAX_ROW_ID)]
 
 
 class ORMModel(BaseModel):

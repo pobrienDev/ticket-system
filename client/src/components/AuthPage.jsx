@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, setToken } from '../api'
+import { LIMITS } from '../constants'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
 
@@ -68,7 +69,8 @@ function AuthPage({ onAuthed, serverState = 'ok' }) {
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             // The minimum is a signup rule. Enforcing it on sign-in would
             // lock out any account that predates it.
-            minLength={mode === 'register' ? 8 : undefined}
+            minLength={mode === 'register' ? LIMITS.passwordMin : undefined}
+            maxLength={LIMITS.passwordMax}
             required
           />
         </label>
@@ -78,7 +80,11 @@ function AuthPage({ onAuthed, serverState = 'ok' }) {
             {SERVER_NOTICES[serverState]}
           </p>
         )}
-        {error && <p className="auth-card__error">{error}</p>}
+        {error && (
+          <p className="auth-card__error" role="alert">
+            {error}
+          </p>
+        )}
 
         <button className="btn btn--primary btn--block" type="submit" disabled={submitting}>
           {submitting ? 'Working…' : mode === 'login' ? 'Sign in' : 'Register'}

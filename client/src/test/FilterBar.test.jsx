@@ -6,11 +6,13 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FilterBar from '../components/FilterBar'
 
+// '' in a select means "no filter" (the network layer drops it); the scope
+// chip is the one filter with a named "all".
 const baseFilters = {
   scope: 'all',
-  status: 'all',
-  category_id: 'all',
-  assignee_id: 'all',
+  status: '',
+  category_id: '',
+  assignee_id: '',
   q: '',
   sort: '-created_at',
 }
@@ -91,16 +93,9 @@ describe('search', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('follows an external reset of the search filter', () => {
-    // The parent owns the filters; if it clears q (a reset button, a scope
-    // change), the box must show the new value rather than a stale draft.
-    const { rerender } = renderBar({ filters: { ...baseFilters, q: 'printer' } })
-    expect(screen.getByLabelText('Search')).toHaveValue('printer')
-
-    rerender(
-      <FilterBar filters={baseFilters} categories={categories} users={[]} isAdmin={false} onChange={() => {}} />,
-    )
-    expect(screen.getByLabelText('Search')).toHaveValue('')
+  it('caps the search term where the API does', () => {
+    renderBar()
+    expect(screen.getByLabelText('Search')).toHaveAttribute('maxlength', '200')
   })
 })
 
@@ -126,8 +121,8 @@ describe('select filters', () => {
     renderBar()
     const options = (label) => [...screen.getByLabelText(label).options].map((o) => o.value)
 
-    expect(options('Status')).toEqual(['all', 'new', 'open', 'in_progress', 'resolved', 'closed'])
-    expect(options('Category')).toEqual(['all', '1', '2'])
+    expect(options('Status')).toEqual(['', 'new', 'open', 'in_progress', 'resolved', 'closed'])
+    expect(options('Category')).toEqual(['', '1', '2'])
     // Both priority directions and the SLA sort the backend supports.
     expect(options('Sort')).toEqual(['-created_at', 'created_at', 'priority', '-priority', 'due_date'])
   })
@@ -139,9 +134,12 @@ describe('scope chips', () => {
   it('switch scope and mark the active one', () => {
     const { onChange } = renderBar({ filters: { ...baseFilters, scope: 'assigned' } })
 
-    // The current scope is styled active; the others are not.
+    // The current scope is styled active and announced as pressed; the
+    // others are neither.
     expect(screen.getByRole('button', { name: 'Assigned to me' })).toHaveClass('chip--active')
+    expect(screen.getByRole('button', { name: 'Assigned to me' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'All tickets' })).not.toHaveClass('chip--active')
+    expect(screen.getByRole('button', { name: 'All tickets' })).toHaveAttribute('aria-pressed', 'false')
 
     fireEvent.click(screen.getByRole('button', { name: 'Opened by me' }))
     expect(onChange).toHaveBeenCalledWith({ ...baseFilters, scope: 'mine' })

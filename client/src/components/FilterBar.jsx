@@ -1,8 +1,9 @@
 // Queue controls: scope chips, search, status/category/assignee filters, and
 // sort. Stateless apart from the search buffer — every change is reported
-// to the Dashboard as a new filters object.
+// to the Dashboard as a new filters object. An empty string in a select
+// means "no filter", and the network layer drops it from the query.
 import { useEffect, useState } from 'react'
-import { STATUSES } from '../constants'
+import { LIMITS, STATUSES } from '../constants'
 
 const SCOPES = [
   { value: 'all', label: 'All tickets' },
@@ -14,10 +15,6 @@ function FilterBar({ filters, categories, users, isAdmin, onChange }) {
   // Search input is buffered locally and debounced so we don't fire one API
   // request per keystroke.
   const [search, setSearch] = useState(filters.q)
-
-  useEffect(() => {
-    setSearch(filters.q)
-  }, [filters.q])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -38,6 +35,7 @@ function FilterBar({ filters, categories, users, isAdmin, onChange }) {
             key={scope.value}
             type="button"
             className={`chip${filters.scope === scope.value ? ' chip--active' : ''}`}
+            aria-pressed={filters.scope === scope.value}
             onClick={() => setFilter('scope', scope.value)}
           >
             {scope.label}
@@ -53,13 +51,14 @@ function FilterBar({ filters, categories, users, isAdmin, onChange }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search title or description…"
+            maxLength={LIMITS.search}
           />
         </label>
 
         <label className="field">
           <span>Status</span>
           <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
-            <option value="all">All</option>
+            <option value="">All</option>
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
@@ -71,7 +70,7 @@ function FilterBar({ filters, categories, users, isAdmin, onChange }) {
         <label className="field">
           <span>Category</span>
           <select value={filters.category_id} onChange={(e) => setFilter('category_id', e.target.value)}>
-            <option value="all">All</option>
+            <option value="">All</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -88,7 +87,7 @@ function FilterBar({ filters, categories, users, isAdmin, onChange }) {
               onChange={(e) => setFilter('assignee_id', e.target.value)}
               disabled={filters.scope === 'assigned'}
             >
-              <option value="all">All</option>
+              <option value="">All</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.email}
