@@ -8,11 +8,8 @@ differ (foreign-key enforcement, threading) are handled here.
 
 import os
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
-load_dotenv()
 
 # SQLite by default for local development; set DATABASE_URL to a
 # postgresql:// URL in .env (or the host's environment) for production.

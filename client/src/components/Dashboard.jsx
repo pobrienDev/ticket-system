@@ -3,7 +3,7 @@
 // Child components are presentational and report intent upward through
 // callbacks; all API access for the list view happens here.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, api } from '../api'
+import { api } from '../api'
 import FilterBar from './FilterBar'
 import Logo from './Logo'
 import ThemeToggle from './ThemeToggle'
@@ -12,20 +12,30 @@ import TicketForm from './TicketForm'
 import TicketList from './TicketList'
 
 const PAGE_SIZE = 20
+// '' in a select means "no filter"; the network layer drops it. The scope
+// chip is a UI concept translated into an id filter by queryFor.
 const initialFilters = {
   scope: 'all',
-  status: 'all',
-  category_id: 'all',
-  assignee_id: 'all',
+  status: '',
+  category_id: '',
+  assignee_id: '',
   q: '',
   sort: '-created_at',
 }
 
 // The open ticket lives in the URL hash (#ticket-12) so refresh keeps the
-// view, the back button closes it, and tickets can be deep-linked.
+// view, the back button closes it, and tickets can be deep-linked. Cards are
+// plain links to that hash.
 function ticketIdFromHash() {
   const match = /^#ticket-(\d+)$/.exec(window.location.hash)
   return match ? Number(match[1]) : null
+}
+
+function queryFor(filters, userId) {
+  const { scope, ...rest } = filters
+  if (scope === 'assigned') return { ...rest, assignee_id: userId }
+  if (scope === 'mine') return { ...rest, owner_id: userId }
+  return rest
 }
 
 function formatHours(hours) {
@@ -43,20 +53,25 @@ function StatTile({ label, value, alert }) {
 }
 
 function Dashboard({ user, onLogout }) {
-  const [tickets, setTickets] = useState([])
+  const [tickets, setTickets] = useState(null) // null until the first page arrives
   const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
   const [stats, setStats] = useState(null)
   const [filters, setFilters] = useState(initialFilters)
   const [categories, setCategories] = useState([])
   const [users, setUsers] = useState([])
   const [selectedId, setSelectedId] = useState(ticketIdFromHash)
-  const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
-  // Monotonic sequence so a slow, stale list response can never overwrite a
-  // newer one.
-  const requestSeq = useRef(0)
+  // Bumped by mutations so the first page reloads with the current filters.
+  const [listVersion, setListVersion] = useState(0)
+  // Request bookkeeping. Every first-page request takes a number; a response
+  // is applied only if it is still the newest, so a slow, stale page can
+  // never overwrite a newer one. shownSeq is the request whose page is on
+  // screen; loadMore uses it to refuse to extend a page that is being
+  // replaced.
+  const resetSeq = useRef(0)
+  const shownSeq = useRef(0)
+  const appendSeq = useRef(0)
 
   useEffect(() => {
     const onHashChange = () => setSelectedId(ticketIdFromHash())
@@ -64,63 +79,36 @@ function Dashboard({ user, onLogout }) {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
-  function openTicket(id) {
-    window.location.hash = `ticket-${id}`
-  }
-
   function closeTicket() {
     window.location.hash = ''
   }
 
-  const apiFilters = useCallback(() => {
-    const { scope, ...rest } = filters
-    if (scope === 'assigned') return { ...rest, assignee_id: user.id }
-    if (scope === 'mine') return { ...rest, owner_id: user.id }
-    return rest
-  }, [filters, user.id])
+  // First page, whenever the filters change or a mutation asks for a reload.
+  useEffect(() => {
+    const seq = ++resetSeq.current
+    api
+      .listTickets({ ...queryFor(filters, user.id), limit: PAGE_SIZE, offset: 0 })
+      .then((page) => {
+        if (seq !== resetSeq.current) return // a newer request superseded this one
+        shownSeq.current = seq
+        setTickets(page.items)
+        setTotal(page.total)
+        setError(null)
+      })
+      .catch((err) => {
+        if (seq === resetSeq.current) setError(err.message)
+      })
+  }, [filters, user.id, listVersion])
 
+  // Stats cover everything the user can see, so they do not depend on the
+  // filters: loaded once, then only when a mutation may have changed them.
   const loadStats = useCallback(() => {
     api.getStats().then(setStats).catch(() => setStats(null))
   }, [])
 
-  const loadTickets = useCallback(
-    async ({ nextOffset = 0, append = false } = {}) => {
-      const seq = ++requestSeq.current
-      setError(null)
-      if (append) setLoadingMore(true)
-      try {
-        const page = await api.listTickets({ ...apiFilters(), limit: PAGE_SIZE, offset: nextOffset })
-        if (seq !== requestSeq.current) return // a newer request superseded this one
-        setTickets((prev) => (append ? [...prev, ...page.items] : page.items))
-        setTotal(page.total)
-        setOffset(nextOffset)
-      } catch (err) {
-        if (seq !== requestSeq.current) return
-        // A network failure means the API server is likely down; an ApiError
-        // means it answered (401s are already handled globally by App).
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : `${err.message} — is the API server running? Start it with uvicorn app.main:app --reload.`,
-        )
-      } finally {
-        setLoading(false)
-        setLoadingMore(false)
-      }
-    },
-    [apiFilters],
-  )
-
-  // Any mutation (create, patch, delete) can change both the list and the
-  // stats tiles, so they are always refreshed together.
-  const refresh = useCallback(() => {
-    loadTickets()
-    loadStats()
-  }, [loadTickets, loadStats])
-
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    loadStats()
+  }, [loadStats])
 
   useEffect(() => {
     api.listCategories().then(setCategories).catch(() => setCategories([]))
@@ -129,9 +117,40 @@ function Dashboard({ user, onLogout }) {
     }
   }, [user.is_admin])
 
+  // Any mutation (create, patch, delete) can change both the list and the
+  // stats tiles, so they are always refreshed together.
+  function refresh() {
+    setListVersion((version) => version + 1)
+    loadStats()
+  }
+
   async function handleCreate(input) {
     await api.createTicket(input)
     refresh()
+  }
+
+  async function loadMore() {
+    // While a first page is still loading, the list on screen belongs to the
+    // previous filters; appending the new filters' page 2 to it would mix
+    // two queries. Ignore the click until the new page has landed.
+    if (shownSeq.current !== resetSeq.current) return
+    const base = resetSeq.current
+    const seq = ++appendSeq.current
+    setLoadingMore(true)
+    try {
+      const page = await api.listTickets({
+        ...queryFor(filters, user.id),
+        limit: PAGE_SIZE,
+        offset: tickets.length,
+      })
+      if (base !== resetSeq.current || seq !== appendSeq.current) return
+      setTickets((prev) => [...prev, ...page.items])
+      setTotal(page.total)
+    } catch (err) {
+      if (base === resetSeq.current) setError(err.message)
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   return (
@@ -161,7 +180,10 @@ function Dashboard({ user, onLogout }) {
 
       <main className="content">
         {selectedId ? (
+          // key: a different ticket is a fresh component, so nothing (an
+          // open edit form, a loaded ticket) carries over between tickets.
           <TicketDetail
+            key={selectedId}
             ticketId={selectedId}
             user={user}
             users={users}
@@ -201,24 +223,21 @@ function Dashboard({ user, onLogout }) {
               </div>
             )}
 
-            {loading ? (
-              <p className="empty" role="status">
-                Loading tickets…
-              </p>
+            {tickets === null ? (
+              !error && (
+                <p className="empty" role="status">
+                  Loading tickets…
+                </p>
+              )
             ) : (
               <>
-                <TicketList tickets={tickets} onSelect={openTicket} />
+                <TicketList tickets={tickets} />
                 {tickets.length < total && (
                   <div className="list-footer">
                     <span className="list-footer__count" role="status">
                       Showing {tickets.length} of {total}
                     </span>
-                    <button
-                      className="btn btn--primary"
-                      type="button"
-                      disabled={loadingMore}
-                      onClick={() => loadTickets({ nextOffset: offset + PAGE_SIZE, append: true })}
-                    >
+                    <button className="btn btn--primary" type="button" disabled={loadingMore} onClick={loadMore}>
                       {loadingMore ? 'Loading…' : 'Load more'}
                     </button>
                   </div>

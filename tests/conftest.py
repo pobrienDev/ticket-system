@@ -82,7 +82,7 @@ if TEST_DATABASE_URL.startswith("sqlite"):
 else:
     engine = create_engine(TEST_DATABASE_URL)
 
-TestSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+TestSessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 
 def override_get_db():

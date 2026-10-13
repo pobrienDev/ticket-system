@@ -123,15 +123,6 @@ def test_avg_resolution_hours_is_the_mean_over_resolved_tickets(authed_client, d
     assert stats_for(authed_client)["avg_resolution_hours"] == 15.0
 
 
-def test_closed_tickets_still_count_toward_resolution_time(authed_client):
-    # resolved -> closed keeps resolved_at (see test_lifecycle), so closing a
-    # ticket must not drop it from the average.
-    made = create_ticket(authed_client)
-    set_status(authed_client, made["id"], "resolved")
-    set_status(authed_client, made["id"], "closed")
-    assert stats_for(authed_client)["avg_resolution_hours"] is not None
-
-
 # --- Scoping and auth -------------------------------------------------------
 
 

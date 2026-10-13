@@ -1,22 +1,16 @@
-// One row in the queue. The whole card is a single <button> so it is
-// keyboard-focusable and announced as one actionable item by screen readers.
-import { isOverdue, priorityLabel, statusLabel } from '../constants'
+// One row in the queue. The whole card is a single link to the ticket's
+// hash: keyboard-focusable, announced as one item by screen readers, and a
+// real URL (copyable, middle-clickable) — the hash is how the Dashboard
+// decides which ticket is open, so no click handler is needed.
+import { formatDate } from '../constants'
+import TicketBadges from './TicketBadges'
 
-// Formats API timestamps (always UTC with an explicit offset) in the
-// viewer's locale and timezone.
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-
-function TicketCard({ ticket, onSelect }) {
+function TicketCard({ ticket }) {
   return (
     <li className={`ticket-card ticket-card--${ticket.status}`}>
-      <button className="ticket-card__button" type="button" onClick={() => onSelect(ticket.id)}>
+      <a className="ticket-card__link" href={`#ticket-${ticket.id}`}>
         <div className="ticket-card__title-row">
-          <span className={`badge badge--p${ticket.priority}`}>{priorityLabel(ticket.priority)}</span>
-          <span className={`badge badge--status badge--status-${ticket.status}`}>
-            {statusLabel(ticket.status)}
-          </span>
-          {isOverdue(ticket) && <span className="badge badge--overdue">Overdue</span>}
-          {ticket.category && <span className="badge badge--category">{ticket.category.name}</span>}
+          <TicketBadges ticket={ticket} />
           <h3>
             #{ticket.id} {ticket.title}
           </h3>
@@ -25,9 +19,9 @@ function TicketCard({ ticket, onSelect }) {
         <p className="ticket-card__meta">
           Opened by {ticket.owner.email} ·{' '}
           {ticket.assignee ? `assigned to ${ticket.assignee.email}` : 'unassigned'} · updated{' '}
-          {dateFormat.format(new Date(ticket.updated_at))}
+          {formatDate(ticket.updated_at)}
         </p>
-      </button>
+      </a>
     </li>
   )
 }

@@ -210,10 +210,12 @@ describe('401 handling', () => {
 // --- Query building ---------------------------------------------------------
 
 describe('query building', () => {
-  it('drops empty and "all" filter values', async () => {
+  it('drops empty filter values and sends everything else verbatim', async () => {
+    // '' is the UI's "no filter". Any other string is a real value — a
+    // search for the word "all" must reach the server.
     fetch.mockResolvedValue(jsonResponse({ items: [], total: 0 }))
-    await api.listTickets({ status: 'all', q: '', category_id: 2, limit: 20 })
-    expect(lastRequest()[0]).toBe('/tickets?category_id=2&limit=20')
+    await api.listTickets({ status: '', q: 'all', category_id: 2, limit: 20 })
+    expect(lastRequest()[0]).toBe('/tickets?q=all&category_id=2&limit=20')
   })
 
   it('keeps zero and omits null or undefined values', async () => {

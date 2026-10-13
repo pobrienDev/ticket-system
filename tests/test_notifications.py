@@ -138,9 +138,14 @@ def test_no_email_unless_the_assignee_actually_changes(authed_client, admin_clie
     with patch("app.notifications.send_email") as mock_send:
         # Re-sending the same assignee, changing other fields, and unassigning
         # are not new assignments; none of them notifies anyone.
-        admin_client.patch(f"/tickets/{made['id']}", json={"assignee_id": test_user.id})
-        admin_client.patch(f"/tickets/{made['id']}", json={"status": "in_progress", "priority": 1})
-        admin_client.patch(f"/tickets/{made['id']}", json={"assignee_id": None})
+        # Each PATCH must succeed: a rejected request sends no email either,
+        # which would make this test pass for the wrong reason.
+        for body in (
+            {"assignee_id": test_user.id},
+            {"status": "in_progress", "priority": 1},
+            {"assignee_id": None},
+        ):
+            assert admin_client.patch(f"/tickets/{made['id']}", json=body).status_code == 200
     mock_send.assert_not_called()
 
 

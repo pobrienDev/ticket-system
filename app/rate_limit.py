@@ -20,10 +20,10 @@ Configuration (all optional):
 
 import os
 
+from fastapi import Request
 from limits import parse as parse_limit
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from starlette.requests import Request
 
 TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").lower() == "true"
 

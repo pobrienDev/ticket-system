@@ -21,6 +21,9 @@ jobs:
     env:
       JWT_SECRET: ci-test-secret-padded-past-32-bytes-minimum
       TEST_DATABASE_URL: postgresql+psycopg2://postgres:test@localhost:5432/postgres
+      # The migration step targets the same database; the suite ignores this
+      # and uses TEST_DATABASE_URL.
+      DATABASE_URL: postgresql+psycopg2://postgres:test@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -34,8 +37,6 @@ jobs:
       # The test suite rebuilds its schema from the models, so this step is
       # the only place the migrations themselves are proven.
       - name: Run and verify migrations
-        env:
-          DATABASE_URL: postgresql+psycopg2://postgres:test@localhost:5432/postgres
         run: |
           alembic upgrade head
           alembic check
@@ -77,6 +78,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm test
@@ -90,12 +93,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t ticket-system-api:ci .
-      - name: Boot check inside the image
+      # Run the image's real entrypoint, not just an import: migrations on
+      # boot, the non-root user writing the SQLite fallback, uvicorn, and the
+      # health route all have to work for /health to answer 200.
+      - name: Boot the image and probe /health
         run: |
-          docker run --rm \
+          docker run -d --name api -p 8000:8000 \
             -e JWT_SECRET=ci-image-secret-padded-past-32-bytes-minimum \
-            ticket-system-api:ci \
-            python -c "import app.main, sys; print('import ok on', sys.version)"
+            ticket-system-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then echo; exit 0; fi
+            sleep 1
+          done
+          echo "::error::/health never answered"; docker logs api; exit 1
+      - if: always()
+        run: docker rm -f api
 
   deploy:
     # Deploys on merge to main once all three jobs pass. Uses a Render deploy hook:
@@ -113,12 +125,14 @@ jobs:
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
+          # This job is the only path to production, so a missing secret is a
+          # broken pipeline, not a green no-op.
           if [ -z "$DEPLOY_HOOK" ]; then
-            echo "RENDER_DEPLOY_HOOK_URL secret not set; skipping deploy."
-          else
-            # Name the commit that passed. Without `ref`, Render builds
-            # whatever is at the head of the branch when the hook fires,
-            # which can be a later push whose checks have not finished.
-            case "$DEPLOY_HOOK" in *\?*) sep='&' ;; *) sep='?' ;; esac
-            curl -fsS -X POST "${DEPLOY_HOOK}${sep}ref=${GITHUB_SHA}"
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set; nothing was deployed."
+            exit 1
           fi
+          # Name the commit that passed. Without `ref`, Render builds
+          # whatever is at the head of the branch when the hook fires,
+          # which can be a later push whose checks have not finished.
+          case "$DEPLOY_HOOK" in *\?*) sep='&' ;; *) sep='?' ;; esac
+          curl -fsS -X POST "${DEPLOY_HOOK}${sep}ref=${GITHUB_SHA}"

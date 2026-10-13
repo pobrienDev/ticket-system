@@ -6,6 +6,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { deferred } from './helpers'
 import Dashboard from '../components/Dashboard'
 
 vi.mock('../api', () => ({
@@ -66,15 +67,6 @@ const stats = {
   avg_resolution_hours: 27.1,
 }
 
-// A promise the test resolves by hand, to control response ordering.
-function deferred() {
-  let resolve
-  const promise = new Promise((r) => {
-    resolve = r
-  })
-  return { promise, resolve }
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
   window.location.hash = ''
@@ -124,14 +116,27 @@ describe('initial load', () => {
 
 describe('stats tiles', () => {
   it('formats resolution time in hours below two days and days above', async () => {
-    const { rerender } = render(<Dashboard user={admin} onLogout={() => {}} />)
+    api.createTicket.mockResolvedValue(makeTicket(50))
+    render(<Dashboard user={admin} onLogout={() => {}} />)
     expect(await screen.findByText('27h')).toBeInTheDocument()
 
+    // Stats refresh after a mutation (creating a ticket), not on filter changes.
     api.getStats.mockResolvedValue({ ...stats, avg_resolution_hours: 60 })
-    rerender(<Dashboard user={{ ...admin }} onLogout={() => {}} />)
-    // Re-rendering alone doesn't refetch; trigger a refresh via a filter change.
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'open' } })
+    await userEvent.type(screen.getByLabelText('Title'), 'Anything')
+    await userEvent.click(screen.getByRole('button', { name: 'Create ticket' }))
     expect(await screen.findByText('2.5d')).toBeInTheDocument()
+  })
+
+  it('loads stats once, not again on every filter change', async () => {
+    // Stats cover everything the user can see regardless of filters, so a
+    // filter change (every debounced search keystroke) must not refetch them.
+    render(<Dashboard user={admin} onLogout={() => {}} />)
+    await screen.findByText('#1 Ticket 1')
+    expect(api.getStats).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'open' } })
+    await waitFor(() => expect(api.listTickets).toHaveBeenCalledTimes(2))
+    expect(api.getStats).toHaveBeenCalledTimes(1)
   })
 
   it('shows a dash when nothing has been resolved yet', async () => {
@@ -150,25 +155,69 @@ describe('stats tiles', () => {
     expect(screen.getByText('Overdue').closest('.stat')).toHaveClass('stat--alert')
     expect(screen.getByText('Unassigned').closest('.stat')).not.toHaveClass('stat--alert')
   })
+
+  it('does not highlight an alerting tile whose count is zero', async () => {
+    api.getStats.mockResolvedValue({ ...stats, p1_unresolved: 0, overdue: 0 })
+    render(<Dashboard user={admin} onLogout={() => {}} />)
+    await screen.findByText('#1 Ticket 1')
+    expect(screen.getByText('P1 urgent').closest('.stat')).not.toHaveClass('stat--alert')
+    expect(screen.getByText('Overdue').closest('.stat')).not.toHaveClass('stat--alert')
+  })
 })
 
 // --- Pagination -------------------------------------------------------------
 
 describe('pagination', () => {
   it('appends the next page on Load more and hides the footer when complete', async () => {
+    // A full first page of 20; the next request starts where it ended.
+    const firstPage = Array.from({ length: 20 }, (_, i) => makeTicket(i + 1))
+    api.listTickets.mockResolvedValueOnce(page(firstPage, 22))
     render(<Dashboard user={admin} onLogout={() => {}} />)
     await screen.findByText('#1 Ticket 1')
 
     // Second page: two more tickets, and now the total says that's everything.
-    api.listTickets.mockResolvedValue(page([makeTicket(3), makeTicket(4)], 4, 20))
+    api.listTickets.mockResolvedValue(page([makeTicket(21), makeTicket(22)], 22, 20))
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
 
-    expect(await screen.findByText('#4 Ticket 4')).toBeInTheDocument()
+    expect(await screen.findByText('#22 Ticket 22')).toBeInTheDocument()
     expect(api.listTickets).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }))
     // Earlier items are kept (append), not replaced.
     expect(screen.getByText('#1 Ticket 1')).toBeInTheDocument()
-    expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    expect(screen.getAllByRole('listitem')).toHaveLength(22)
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
+  it('shows progress and disables Load more while the next page is in flight', async () => {
+    render(<Dashboard user={admin} onLogout={() => {}} />)
+    await screen.findByText('#1 Ticket 1')
+    const pending = deferred()
+    api.listTickets.mockReturnValueOnce(pending.promise)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(screen.getByRole('button', { name: 'Loading…' })).toBeDisabled()
+
+    pending.resolve(page([makeTicket(3)], 30, 20))
+    expect(await screen.findByText('#3 Ticket 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled()
+  })
+
+  it('ignores Load more while a filter change is still loading its first page', async () => {
+    // Otherwise page 2 of the NEW filters would be appended to page 1 of the
+    // OLD ones, and the sequence guard would then discard the new page 1 as
+    // "older" — a list mixing two queries.
+    render(<Dashboard user={admin} onLogout={() => {}} />)
+    await screen.findByText('#1 Ticket 1')
+
+    const reset = deferred()
+    api.listTickets.mockReturnValueOnce(reset.promise)
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'open' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    expect(api.listTickets).toHaveBeenCalledTimes(2) // the reset only; the click was ignored
+
+    reset.resolve(page([makeTicket(9)], 30))
+    expect(await screen.findByText('#9 Ticket 9')).toBeInTheDocument()
+    expect(screen.queryByText('#1 Ticket 1')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
   })
 
   it('resets to the first page when a filter changes', async () => {
@@ -221,21 +270,14 @@ describe('stale-response guard', () => {
 // --- Errors -----------------------------------------------------------------
 
 describe('errors', () => {
-  it('shows the API message for an error the server returned', async () => {
+  it('shows the error message in a banner and drops the loading state', async () => {
+    // The network layer shapes every failure (HTTP error, timeout, refused
+    // connection) into one message, so the banner just shows it.
     api.listTickets.mockRejectedValue(new ApiError('Something went wrong', 500))
     render(<Dashboard user={admin} onLogout={() => {}} />)
 
-    const banner = await screen.findByRole('alert')
-    expect(banner).toHaveTextContent('Something went wrong')
-    expect(banner).not.toHaveTextContent('is the API server running')
-  })
-
-  it('suggests starting the server when the request never reached it', async () => {
-    // A plain fetch failure (not an ApiError) means nothing answered at all.
-    api.listTickets.mockRejectedValue(new Error('Failed to fetch'))
-    render(<Dashboard user={admin} onLogout={() => {}} />)
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('is the API server running')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong')
+    expect(screen.queryByText('Loading tickets…')).not.toBeInTheDocument()
   })
 })
 
@@ -314,7 +356,7 @@ describe('scope and navigation', () => {
       const lastCall = api.listTickets.mock.calls.at(-1)[0]
       expect(lastCall.owner_id).toBe(admin.id)
       // The assignee pin from the previous scope is gone; what remains is the
-      // dropdown's default ('all'), which api.js drops before the request.
+      // dropdown's default (''), which api.js drops before the request.
       expect(lastCall.assignee_id).not.toBe(admin.id)
     })
   })
@@ -323,8 +365,11 @@ describe('scope and navigation', () => {
     render(<Dashboard user={admin} onLogout={() => {}} />)
     await screen.findByText('#1 Ticket 1')
 
-    fireEvent.click(screen.getByText('#1 Ticket 1').closest('button'))
-    expect(window.location.hash).toBe('#ticket-1')
+    // The card is a link to the ticket's hash; the browser following it is
+    // what opens the ticket. jsdom does not navigate on anchor clicks, so the
+    // test sets the hash the link points at and checks the Dashboard reacts.
+    expect(screen.getByText('#1 Ticket 1').closest('a')).toHaveAttribute('href', '#ticket-1')
+    window.location.hash = '#ticket-1'
     // The detail view loads the ticket by id.
     expect(await screen.findByRole('heading', { level: 2, name: '#1 Ticket 1' })).toBeInTheDocument()
     expect(api.getTicket).toHaveBeenCalledWith(1)

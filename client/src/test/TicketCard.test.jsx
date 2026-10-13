@@ -1,9 +1,9 @@
 // One row in the queue. Purely presentational, so the tests check what a
 // ticket's fields turn into on screen: badges, optional parts, the meta
 // line, the styling hooks the stylesheet relies on, and that the card is a
-// single accessible button.
+// single accessible link to the ticket's hash.
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import TicketCard from '../components/TicketCard'
 
 const HOUR = 3600_000
@@ -27,10 +27,10 @@ function makeTicket(overrides = {}) {
 }
 
 // TicketCard renders an <li>, so it needs a list parent to be valid HTML.
-function renderCard(ticket, onSelect = () => {}) {
+function renderCard(ticket) {
   return render(
     <ul>
-      <TicketCard ticket={ticket} onSelect={onSelect} />
+      <TicketCard ticket={ticket} />
     </ul>,
   )
 }
@@ -106,19 +106,16 @@ describe('styling hooks', () => {
 // --- Interaction and accessibility -----------------------------------------
 
 describe('interaction', () => {
-  it('is a single button whose name includes the title', () => {
-    // The whole card is one <button>, so keyboard users tab to the ticket
-    // once and screen readers announce it as one actionable item.
+  it('is a single link to the ticket hash whose name includes the title', () => {
+    // The whole card is one <a href="#ticket-N">, so keyboard users tab to
+    // the ticket once, screen readers announce one item, and the URL that
+    // opens the ticket is a real link (copyable, middle-clickable). The
+    // Dashboard watches the hash, so no click handler is involved.
     renderCard(makeTicket())
-    const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(1)
-    expect(buttons[0]).toHaveAccessibleName(/#7 Printer jams on duplex jobs/)
-  })
-
-  it('reports its ticket id when clicked', () => {
-    const onSelect = vi.fn()
-    renderCard(makeTicket(), onSelect)
-    screen.getByRole('button').click()
-    expect(onSelect).toHaveBeenCalledWith(7)
+    const links = screen.getAllByRole('link')
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '#ticket-7')
+    expect(links[0]).toHaveAccessibleName(/#7 Printer jams on duplex jobs/)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })

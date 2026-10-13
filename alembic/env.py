@@ -17,7 +17,9 @@ from app import models  # noqa: F401
 from app.database import DATABASE_URL, Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# The ini is parsed with ConfigParser interpolation, where "%" is special;
+# a URL-encoded password ("p%40ss") would otherwise crash every command.
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

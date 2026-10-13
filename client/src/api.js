@@ -105,13 +105,11 @@ export const api = {
   listUsers: () => request('/users'),
   listCategories: () => request('/categories'),
   listTickets: (filters = {}) => {
-    // Only meaningful filters become query params; '' / null / 'all' mean
-    // "no filter" in the UI and are dropped rather than sent.
+    // Only meaningful filters become query params; '' / null / undefined
+    // mean "no filter" and are dropped rather than sent.
     const params = new URLSearchParams()
     for (const [key, value] of Object.entries(filters)) {
-      if (value !== '' && value !== null && value !== undefined && value !== 'all') {
-        params.set(key, value)
-      }
+      if (value !== '' && value !== null && value !== undefined) params.set(key, value)
     }
     const query = params.toString()
     return request(`/tickets${query ? `?${query}` : ''}`)

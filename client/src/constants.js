@@ -29,6 +29,26 @@ export const PRIORITIES = [
   { value: 5, label: 'P5 — Backlog' },
 ]
 
+// Input limits mirrored from the API (app/schemas.py) so the browser stops
+// a visitor at the same point the server would. The server remains the
+// authority; these only make the limit visible before a request is sent.
+export const LIMITS = {
+  title: 200,
+  description: 10_000,
+  comment: 5_000,
+  search: 200,
+  passwordMin: 8,
+  passwordMax: 72, // bytes on the server (bcrypt's cap); characters here, close enough
+}
+
+// API timestamps are UTC with an explicit offset; show them in the viewer's
+// locale and timezone.
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+export function formatDate(iso) {
+  return dateFormat.format(new Date(iso))
+}
+
 export function statusLabel(value) {
   return STATUSES.find((s) => s.value === value)?.label ?? value
 }

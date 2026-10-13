@@ -2,7 +2,7 @@
 // the numeric/nullable conversions happen once at submit so the API always
 // receives the types it expects (priority as a number, category_id or null).
 import { useState } from 'react'
-import { PRIORITIES } from '../constants'
+import { LIMITS, PRIORITIES } from '../constants'
 
 const emptyForm = { title: '', description: '', priority: 3, category_id: '' }
 
@@ -46,7 +46,7 @@ function TicketForm({ categories, onCreate }) {
             value={form.title}
             onChange={(e) => setField('title', e.target.value)}
             placeholder="Short summary of the issue"
-            maxLength={200}
+            maxLength={LIMITS.title}
             required
           />
         </label>
@@ -82,10 +82,15 @@ function TicketForm({ categories, onCreate }) {
           value={form.description}
           onChange={(e) => setField('description', e.target.value)}
           placeholder="Steps to reproduce, expected behavior, context…"
+          maxLength={LIMITS.description}
         />
       </label>
 
-      {error && <p className="ticket-form__error">{error}</p>}
+      {error && (
+        <p className="ticket-form__error" role="alert">
+          {error}
+        </p>
+      )}
 
       <button className="btn btn--primary" type="submit" disabled={submitting}>
         {submitting ? 'Creating…' : 'Create ticket'}

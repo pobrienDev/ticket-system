@@ -5,6 +5,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { deferred } from './helpers'
 import TicketDetail from '../components/TicketDetail'
 
 vi.mock('../api', () => ({
@@ -52,14 +53,6 @@ function makeTicket(overrides = {}) {
     comments: [],
     ...overrides,
   }
-}
-
-function deferred() {
-  let resolve
-  const promise = new Promise((r) => {
-    resolve = r
-  })
-  return { promise, resolve }
 }
 
 const noop = () => {}

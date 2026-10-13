@@ -5,6 +5,7 @@
 // and nothing else.
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { deferred } from './helpers'
 
 const user = { id: 1, email: 'joyce@example.com', is_admin: false }
 
@@ -50,15 +51,6 @@ vi.mock('../components/Dashboard', () => ({
 
 import App, { BOOT_ATTEMPTS, BOOT_RETRY_MS } from '../App'
 import { ApiError, api, setToken, setUnauthorizedHandler } from '../api'
-
-function deferred() {
-  let resolve, reject
-  const promise = new Promise((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
 
 beforeEach(() => {
   vi.clearAllMocks()

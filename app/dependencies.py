@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from . import models
 from .auth import decode_access_token
 from .database import SessionLocal
+from .schemas import MAX_ROW_ID
 
 # Reads the bearer token from the Authorization header (401 if absent);
 # tokenUrl only tells the OpenAPI docs where a token can be obtained.
@@ -68,6 +69,8 @@ def get_current_user(
         # Only the secret holder could mint a token with a malformed subject,
         # but it must still be a clean 401, never a 500.
         raise credentials_error from None
+    if not 0 < user_id <= MAX_ROW_ID:
+        raise credentials_error  # cannot be a row; SQLite would raise on the lookup
     user = db.get(models.User, user_id)
     if user is None:
         raise credentials_error
