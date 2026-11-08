@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t ticket-system-api:ci .
-      - name: Boot check inside the image
+      - name: Import check inside the image
         run: |
           docker run --rm \
             -e JWT_SECRET=ci-image-secret-padded-past-32-bytes-minimum \
